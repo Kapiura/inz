@@ -7,6 +7,7 @@ include_directories(include)
 add_executable(my_opengl_in_test
   src/main.cpp
   src/Shader.cpp
+  src/Camera.cpp
   src/glad.c)
 
 target_link_libraries(my_opengl_in_test glfw)
