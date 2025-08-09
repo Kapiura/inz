@@ -164,6 +164,7 @@ int main() {
   ourShader.use();
   ourShader.setInt("texture1", 0);
   ourShader.setInt("texture2", 1);
+  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
   // render loop
   while (!glfwWindowShouldClose(window)) {
@@ -201,9 +202,9 @@ int main() {
       // drawing
       glm::mat4 model = glm::mat4(1.0f);
       model = glm::translate(model, cubePositions[i]);
+      model = glm::scale(model, glm::vec3(0.1f));
       float angle = 20.0f * i;
-      model =
-          glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
+      model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
       ourShader.setMat4("model", model);
 
       glDrawArrays(GL_TRIANGLES, 0, 36);
