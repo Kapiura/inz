@@ -3,13 +3,16 @@
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <GLFW/glfw3.h>
 
 enum Camera_Movement
 {
     FORWARD,
     BACKWARD,
     LEFT,
-    RIGHT
+    RIGHT,
+    UP,
+    DOWN
 };
 
 const float YAW = -90.0f;
@@ -34,6 +37,7 @@ class Camera
     float MovementSpeed;
     float MouseSensitivity;
     float Zoom;
+    float cameraBlocked = true;
 
     Camera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f),
            float yaw = YAW, float pitch = PITCH);
@@ -45,6 +49,12 @@ class Camera
     void ProcessKeyboard(Camera_Movement direction, float deltaTime);
     void ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch = true);
     void ProcessMouseScroll(float yoffset);
+    void unLockCamera(GLFWwindow *window);
+
+    bool getCameraBlocked()
+    {
+        return cameraBlocked;
+    };
 
   private:
     void updateCameraVectors();

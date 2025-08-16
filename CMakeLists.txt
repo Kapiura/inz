@@ -1,13 +1,30 @@
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.16)
+project(ClothSim)
 
-project(my_opengl_in_test VERSION 0.1.0)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-include_directories(include)
+add_subdirectory(external/imgui)
+
+add_library(glad src/glad.c)
+target_include_directories(glad PUBLIC include)
 
 add_executable(my_opengl_in_test
-  src/main.cpp
-  src/Shader.cpp
-  src/Camera.cpp
-  src/glad.c)
+    src/main.cpp
+    src/Camera.cpp
+    src/Shader.cpp
+    src/Cloth.cpp
+)
 
-target_link_libraries(my_opengl_in_test glfw)
+find_package(OpenGL REQUIRED)
+find_package(glfw3 3.3 REQUIRED)
+
+target_include_directories(my_opengl_in_test PRIVATE include)
+
+target_link_libraries(my_opengl_in_test
+    PRIVATE
+        glad
+        imgui
+        glfw
+        OpenGL::GL
+)
