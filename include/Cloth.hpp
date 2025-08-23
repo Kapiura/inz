@@ -6,6 +6,31 @@
 
 #include "Shader.hpp"
 
+struct Point
+{
+    glm::vec3 position;
+    glm::vec3 prevPosition;
+    glm::vec3 velocity;
+    bool isFixed;
+    bool isMovable;
+
+    Point(glm::vec3 pos, bool fixed)
+        : position(pos), prevPosition(pos), velocity(0.0f), isFixed(fixed), isMovable(!fixed) {};
+};
+
+struct Spring
+{
+    int pointA;
+    int pointB;
+    float restLen;
+    float stiffness;
+    bool isMovable;
+
+    Spring(int a, int b, float length, float stiff = 500.0f)
+        : pointA(a), pointB(b), restLen(length), stiffness(stiff), isMovable(true)
+    {
+    }
+};
 class Cloth
 {
   public:
@@ -13,9 +38,19 @@ class Cloth
     void draw(Shader &shader);
     void update(float dt);
 
+    void setPointFixed(int x, int y, bool fixed);
+    void setSpringMoveable(int springId, bool moveable);
+    void applyForceToPoint(int pointId, const glm::vec3 &force);
+
   private:
     int resX, resY;
     float width, height;
+
+    void rebuildGraphicsData();
+    void applyConsts();
+
+    std::vector<Point> points;
+    std::vector<Spring> springs;
 
     std::vector<float> pointVertices;
     std::vector<float> lineVertices;

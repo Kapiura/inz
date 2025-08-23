@@ -50,6 +50,10 @@ class Camera
     void ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch = true);
     void ProcessMouseScroll(float yoffset);
     void unLockCamera(GLFWwindow *window);
+    void setLockCamera(bool flag)
+    {
+        cameraBlocked = flag;
+    }
 
     bool getCameraBlocked()
     {
