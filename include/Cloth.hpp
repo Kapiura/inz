@@ -26,7 +26,7 @@ struct Spring
     float stiffness;
     bool isMovable;
 
-    Spring(int a, int b, float length, float stiff = 500.0f)
+    Spring(int a, int b, float length, float stiff = 2.0f)
         : pointA(a), pointB(b), restLen(length), stiffness(stiff), isMovable(true)
     {
     }

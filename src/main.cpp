@@ -80,7 +80,7 @@ int main()
 
     unsigned int VAO, VBO;
 
-    Cloth cloth(2.0f, 2.0f, 100, 100);
+    Cloth cloth(2.0f, 2.0f, 10, 10);
 
     ourShader.use();
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -162,9 +162,9 @@ int main()
 
         glfwSwapBuffers(window);
 
-        LOG(camera.Position.x) << "\t";
-        LOG(camera.Position.y) << "\t";
-        LOG(camera.Position.z) << "\n";
+        // LOG(camera.Position.x) << "\t";
+        // LOG(camera.Position.y) << "\t";
+        // LOG(camera.Position.z) << "\n";
     }
 
     // Cleanup
