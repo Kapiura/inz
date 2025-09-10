@@ -10,12 +10,15 @@ struct Point
 {
     glm::vec3 position;
     glm::vec3 prevPosition;
-    glm::vec3 velocity;
+    glm::vec3 acceleration;
     bool isFixed;
     bool isMovable;
 
     Point(glm::vec3 pos, bool fixed)
-        : position(pos), prevPosition(pos), velocity(0.0f), isFixed(fixed), isMovable(!fixed) {};
+        : position(pos), prevPosition(pos), acceleration(0.0f), isFixed(fixed), isMovable(!fixed) {};
+
+    void update(float dt);
+    void applyForce(glm::vec3&& force);
 };
 
 struct Spring
@@ -24,12 +27,12 @@ struct Spring
     int pointB;
     float restLen;
     float stiffness;
-    bool isMovable;
+    glm::vec3 midpoint;
 
-    Spring(int a, int b, float length, float stiff = 2.0f)
-        : pointA(a), pointB(b), restLen(length), stiffness(stiff), isMovable(true)
-    {
-    }
+Spring(int a, int b, float length, glm::vec3 midpoint, float stiff = 2.0f)
+    : pointA(a), pointB(b), restLen(length), stiffness(stiff), midpoint(midpoint)
+{}
+
 };
 class Cloth
 {
@@ -38,9 +41,8 @@ class Cloth
     void draw(Shader &shader);
     void update(float dt);
 
-    void setPointFixed(int x, int y, bool fixed);
-    void setSpringMoveable(int springId, bool moveable);
-    void applyForceToPoint(int pointId, const glm::vec3 &force);
+    void satisfy();
+    void tear(const glm::vec3 &rayDir, const glm::vec3 &rayOrigin);
 
   private:
     int resX, resY;
@@ -57,4 +59,7 @@ class Cloth
 
     unsigned int VAO_points = 0, VBO_points = 0;
     unsigned int VAO_lines = 0, VBO_lines = 0;
+
+    const float gravity = -9.81f;
+    float pointWeight = 100.0f;
 };

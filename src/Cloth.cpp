@@ -1,6 +1,12 @@
 #include "Cloth.hpp"
+#include <algorithm>
 
 #include <cmath>
+
+glm::vec3 midpoint(const glm::vec3& a, const glm::vec3& b)
+{
+    return (a + b) * 0.5f;
+}
 
 Cloth::Cloth(float width, float height, int resX, int resY)
 {
@@ -31,7 +37,8 @@ Cloth::Cloth(float width, float height, int resX, int resY)
             int idx1 = y * resX + x;
             int idx2 = y * resX + (x + 1);
             float length = glm::distance(points[idx1].position, points[idx2].position);
-            springs.emplace_back(idx1, idx2, length);
+            glm::vec3 mp = midpoint(points[idx1].position, points[idx2].position);
+            springs.emplace_back(idx1, idx2, length, mp);
         }
     }
 
@@ -43,7 +50,8 @@ Cloth::Cloth(float width, float height, int resX, int resY)
             int idx1 = y * resX + x;
             int idx2 = (y + 1) * resX + x;
             float length = glm::distance(points[idx1].position, points[idx2].position);
-            springs.emplace_back(idx1, idx2, length);
+            glm::vec3 mp = midpoint(points[idx1].position, points[idx2].position);
+            springs.emplace_back(idx1, idx2, length, mp);
         }
     }
 
@@ -55,7 +63,8 @@ Cloth::Cloth(float width, float height, int resX, int resY)
             int idx1 = y * resX + x;
             int idx2 = (y + 1) * resX + (x + 1);
             float length = glm::distance(points[idx1].position, points[idx2].position);
-            springs.emplace_back(idx1, idx2, length);
+            glm::vec3 mp = midpoint(points[idx1].position, points[idx2].position);
+            springs.emplace_back(idx1, idx2, length, mp);
         }
     }
 
@@ -111,15 +120,15 @@ void Cloth::rebuildGraphicsData()
 void Cloth::update(float dt)
 {
     float floorY = 0.0f;
+    float gravityForce = gravity / pointWeight;
 
-    for (int i = 0; i < points.size(); i++)
+    // gravity
+    for(auto& point: points)
     {
-        if (!points[i].isFixed)
-        {
-            points[i].position.y -= 0.01f;
-            if (points[i].position.y < floorY)
-                points[i].position.y = floorY;
-        }
+        if (!point.isFixed)
+        point.applyForce(glm::vec3(0.0f, gravityForce, 0.0f));
+
+        point.update(dt);
     }
 
     for (auto &spring : springs)
@@ -128,8 +137,8 @@ void Cloth::update(float dt)
         Point &pointB = points[spring.pointB];
 
         glm::vec3 delta = pointB.position - pointA.position;
+        glm::vec3 mp = midpoint(pointA.position, pointB.position);
         float currentLength = glm::length(delta);
-
         float maxStretchedLength = spring.restLen * 1.5f;
 
         if (currentLength > maxStretchedLength)
@@ -164,6 +173,7 @@ void Cloth::update(float dt)
                 }
             }
         }
+        spring.midpoint = mp;
     }
 
     rebuildGraphicsData();
@@ -192,4 +202,58 @@ void Cloth::draw(Shader &shader)
     glDrawArrays(GL_LINES, 0, lineVertices.size() / 3);
 
     glBindVertexArray(0);
+}
+
+void Point::applyForce(glm::vec3&& force)
+{
+    acceleration += force;
+}
+
+void Point::update(float dt)
+{
+    // verlet
+    glm::vec3 velocity = position - prevPosition;
+    prevPosition = position;
+    position += velocity + acceleration * dt * dt;
+    acceleration = glm::vec3(0.0f, 0.0f, 0.0f);
+}
+
+void Cloth::tear(const glm::vec3 &rayDir, const glm::vec3 &rayOrigin)
+{
+    int closestIdx = -1;
+    float minDist = std::numeric_limits<float>::max();
+
+    for (int i = 0; i < points.size(); i++)
+    {
+        glm::vec3 p = points[i].position;
+        glm::vec3 v = p - rayOrigin;
+        float t = glm::dot(v, rayDir);
+        glm::vec3 closestOnRay = rayOrigin + t * rayDir;
+
+        float dist = glm::length(p - closestOnRay);
+        if (dist < minDist)
+        {
+            minDist = dist;
+            closestIdx = i;
+        }
+    }
+
+    if (closestIdx == -1)
+        return;
+
+    points.erase(points.begin() + closestIdx);
+
+    springs.erase(
+        std::remove_if(springs.begin(), springs.end(),
+                       [closestIdx](const Spring &s)
+                       {
+                           return s.pointA == closestIdx || s.pointB == closestIdx;
+                       }),
+        springs.end());
+
+    for (auto &s : springs)
+    {
+        if (s.pointA > closestIdx) s.pointA--;
+        if (s.pointB > closestIdx) s.pointB--;
+    }
 }
