@@ -6,6 +6,9 @@
 
 #include "Shader.hpp"
 
+class AABB;
+class Ray;
+
 struct Mass
 {
     glm::vec3 position;
@@ -15,6 +18,8 @@ struct Mass
     glm::vec3 force;
     float mass;
     bool fixed;
+
+    AABB getAABB() const;
 
     Mass(const glm::vec3 &pos, float m, bool fix = false)
         : position(pos), prevPosition(pos), velocity(0.0f), acceleration(0.0f), force(0.0f), mass(m), fixed(fix)
@@ -42,11 +47,25 @@ struct Spring
 class Cloth
 {
   public:
-    Cloth(float width, float height, int resX, int resY);
+    Cloth(float width, float height, int resX, int resY, float floorY);
     void draw(Shader &shader);
     void update(float dt);
-
     void satisfy();
+
+    // methods to pick masses
+    int pickMassPoint(const Ray &ray);
+    void setMassPosition(int index, const glm::vec3 &position);
+    void releaseMassPoint(int index);
+
+    // mass getters
+    Mass &getMass(int index)
+    {
+        return masses[index];
+    }
+    const std::vector<Mass> &getMasses() const
+    {
+        return masses;
+    }
 
   private:
     int resX, resY;
@@ -65,4 +84,7 @@ class Cloth
     unsigned int VAO_lines = 0, VBO_lines = 0;
 
     const float gravity = -9.81f;
+    float floorY = 0.0f;
+
+    int selectedMassIndex = -1;
 };

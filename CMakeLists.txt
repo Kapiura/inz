@@ -9,7 +9,9 @@ target_include_directories(glad PUBLIC include)
 
 add_executable(my_opengl_in_test
     src/main.cpp
+    src/AABB.cpp
     src/Camera.cpp
+    src/Ray.cpp
     src/Shader.cpp
     src/Cloth.cpp
 )
