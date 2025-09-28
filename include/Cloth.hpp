@@ -6,34 +6,39 @@
 
 #include "Shader.hpp"
 
-struct Point
+struct Mass
 {
     glm::vec3 position;
     glm::vec3 prevPosition;
+    glm::vec3 velocity;
     glm::vec3 acceleration;
-    bool isFixed;
-    bool isMovable;
+    glm::vec3 force;
+    float mass;
+    bool fixed;
 
-    Point(glm::vec3 pos, bool fixed)
-        : position(pos), prevPosition(pos), acceleration(0.0f), isFixed(fixed), isMovable(!fixed) {};
+    Mass(const glm::vec3 &pos, float m, bool fix = false)
+        : position(pos), prevPosition(pos), velocity(0.0f), acceleration(0.0f), force(0.0f), mass(m), fixed(fix)
+    {
+    }
 
     void update(float dt);
-    void applyForce(glm::vec3&& force);
+    void applyForce(glm::vec3 &&force);
 };
 
 struct Spring
 {
-    int pointA;
-    int pointB;
-    float restLen;
+    int a, b;
+    float restLength;
     float stiffness;
+    float damping;
     glm::vec3 midpoint;
 
-Spring(int a, int b, float length, glm::vec3 midpoint, float stiff = 2.0f)
-    : pointA(a), pointB(b), restLen(length), stiffness(stiff), midpoint(midpoint)
-{}
-
+    Spring(int a, int b, float rest, float k, float d)
+        : a(a), b(b), restLength(rest), stiffness(k), damping(d), midpoint(0.0f)
+    {
+    }
 };
+
 class Cloth
 {
   public:
@@ -42,7 +47,6 @@ class Cloth
     void update(float dt);
 
     void satisfy();
-    void tear(const glm::vec3 &rayDir, const glm::vec3 &rayOrigin);
 
   private:
     int resX, resY;
@@ -51,15 +55,14 @@ class Cloth
     void rebuildGraphicsData();
     void applyConsts();
 
-    std::vector<Point> points;
+    std::vector<Mass> masses;
     std::vector<Spring> springs;
 
-    std::vector<float> pointVertices;
+    std::vector<float> massesVertices;
     std::vector<float> lineVertices;
 
-    unsigned int VAO_points = 0, VBO_points = 0;
+    unsigned int VAO_masses = 0, VBO_masses = 0;
     unsigned int VAO_lines = 0, VBO_lines = 0;
 
     const float gravity = -9.81f;
-    float pointWeight = 100.0f;
 };
