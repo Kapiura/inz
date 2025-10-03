@@ -1,0 +1,6 @@
+﻿---
+BasedOnStyle: Microsoft
+AlignAfterOpenBracket: Align
+SortIncludes: false
+
+...
