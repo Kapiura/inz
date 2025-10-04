@@ -57,6 +57,9 @@ class Cloth
     void setMassPosition(int index, const glm::vec3 &position);
     void releaseMassPoint(int index);
 
+    void checkTearingAroundPoint(int massIndex);
+    void cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos);
+
     // mass getters
     Mass &getMass(int index)
     {
@@ -73,6 +76,8 @@ class Cloth
 
     void rebuildGraphicsData();
     void applyConsts();
+    bool springIntersectsSegment(const Spring &spring, const glm::vec3 &segmentStart, const glm::vec3 &segmentEnd,
+                                 glm::vec3 &intersectionPoint);
 
     std::vector<Mass> masses;
     std::vector<Spring> springs;
@@ -87,4 +92,5 @@ class Cloth
     float floorY = 0.0f;
 
     int selectedMassIndex = -1;
+    glm::vec3 lastMouseWorldPos;
 };
