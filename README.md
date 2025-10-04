@@ -28,7 +28,6 @@
 2.2. Typologie sprężyn w modelowaniu tkanin
 - Sprężyny strukturalne (sąsiednie)
 - Sprężyny ścinające (poprzeczne)
-- Sprężyny zginające
 - Rózne rodzajów materiałów
 
 2.3. Metody całkowania równań ruchu

@@ -38,8 +38,8 @@ struct Spring
     float damping;
     glm::vec3 midpoint;
 
-    Spring(int a, int b, float rest, float k, float d)
-        : a(a), b(b), restLength(rest), stiffness(k), damping(d), midpoint(0.0f)
+    Spring(int a, int b, float rest, const glm::vec3 &mp, float k = 50.0f, float d = 0.01f)
+        : a(a), b(b), restLength(rest), stiffness(k), damping(d), midpoint(mp)
     {
     }
 };
