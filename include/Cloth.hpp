@@ -51,6 +51,7 @@ class Cloth
     void draw(Shader &shader);
     void update(float dt);
     void satisfy();
+    void reset();
 
     // methods to pick masses
     int pickMassPoint(const Ray &ray);
@@ -78,6 +79,7 @@ class Cloth
     void applyConsts();
     bool springIntersectsSegment(const Spring &spring, const glm::vec3 &segmentStart, const glm::vec3 &segmentEnd,
                                  glm::vec3 &intersectionPoint);
+    void initCloth();
 
     std::vector<Mass> masses;
     std::vector<Spring> springs;
