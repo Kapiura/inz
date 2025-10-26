@@ -33,15 +33,30 @@ bool mousePressed = false;
 bool massSelected = false;
 int selectedMassIndex = -1;
 
+bool drawDebugRay = false;
+glm::vec3 debugRayStart, debugRayEnd;
+
+glm::vec3 lastMouseWorldPos(0.0f);
+float interactionDistance = 10.0f;
+bool wasMousePressed = false;
+
+// cutting visualization
+std::vector<glm::vec3> cuttingPath;
+const int MAX_PATH_POINTS = 100;
+
 // callbacks
 void mouse_callback(GLFWwindow *window, double xposIn, double yposIn);
 void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
 void framebuffer_size_callback(GLFWwindow *window, int width, int height);
 void cameraLock(GLFWwindow *window);
-Ray createRayFromMouse(double xpos, double ypos, const glm::mat4 &view, const glm::mat4 &projection);
 void mouse_button_callback(GLFWwindow *window, int button, int action, int mods);
 void updateGrabbedMass(GLFWwindow *window);
+void drawDebugLine(Shader &shader, const glm::vec3 &start, const glm::vec3 &end);
+Ray createRayFromMouse(GLFWwindow *window);
+glm::vec3 getWorldPosFromRay(const Ray &ray, float distance);
+bool rayPlaneIntersection(const Ray &ray, const glm::vec3 &planePoint, const glm::vec3 &planeNormal,
+                          glm::vec3 &hitPoint);
 
 int main()
 {
@@ -117,6 +132,36 @@ int main()
 
         cloth.draw(shader);
 
+        if (!cuttingPath.empty() && cuttingPath.size() >= 2)
+        {
+            shader.setVec3("color", glm::vec3(1.0f, 1.0f, 0.0f));
+            glLineWidth(3.0f);
+
+            std::vector<float> pathVertices;
+            for (const auto &point : cuttingPath)
+            {
+                pathVertices.push_back(point.x);
+                pathVertices.push_back(point.y);
+                pathVertices.push_back(point.z);
+            }
+
+            GLuint pathVAO, pathVBO;
+            glGenVertexArrays(1, &pathVAO);
+            glGenBuffers(1, &pathVBO);
+
+            glBindVertexArray(pathVAO);
+            glBindBuffer(GL_ARRAY_BUFFER, pathVBO);
+            glBufferData(GL_ARRAY_BUFFER, pathVertices.size() * sizeof(float), pathVertices.data(), GL_DYNAMIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+            glEnableVertexAttribArray(0);
+
+            glDrawArrays(GL_LINE_STRIP, 0, pathVertices.size() / 3);
+
+            glDeleteBuffers(1, &pathVBO);
+            glDeleteVertexArrays(1, &pathVAO);
+            glLineWidth(1.0f);
+        }
+
         glfwSwapBuffers(window);
     }
 
@@ -149,6 +194,22 @@ void processInput(GLFWwindow *window)
         camera.ProcessKeyboard(UP, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
         camera.ProcessKeyboard(DOWN, deltaTime);
+
+    static bool rPressedLastFrame = false;
+    bool rPressed = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+    if (rPressed && !rPressedLastFrame)
+    {
+        Cloth *cloth = static_cast<Cloth *>(glfwGetWindowUserPointer(window));
+        cloth->reset();
+
+        mousePressed = false;
+        massSelected = false;
+        selectedMassIndex = -1;
+        cuttingPath.clear();
+
+        std::cout << "Simulation reset!" << std::endl;
+    }
+    rPressedLastFrame = rPressed;
 }
 
 void scroll_callback(GLFWwindow *window, double xoffset, double yoffset)
@@ -192,42 +253,60 @@ void cameraLock(GLFWwindow *window)
 
         if (!camera.getCameraBlocked())
         {
-            std::cout << "Camera LOCKED - can pick points, cursor hidden" << std::endl;
+            std::cout << "Camera UNLOCKED - can pick points, cursor visible" << std::endl;
         }
         else
         {
-            std::cout << "Camera UNLOCKED - cannot pick points, cursor visible" << std::endl;
-            // relase mass if was selected
+            std::cout << "Camera LOCKED - cannot pick points, cursor hidden" << std::endl;
             if (massSelected)
             {
                 Cloth *cloth = static_cast<Cloth *>(glfwGetWindowUserPointer(window));
                 cloth->releaseMassPoint(selectedMassIndex);
                 massSelected = false;
                 selectedMassIndex = -1;
-                std::cout << "Auto-released mass point (camera unlocked)" << std::endl;
             }
         }
     }
     cPressedLastFrame = cPressed;
 }
 
-Ray createRayFromMouse(double xpos, double ypos, const glm::mat4 &view, const glm::mat4 &projection)
+Ray createRayFromMouse(GLFWwindow *window)
 {
-    // mouse position conversion to NDC
-    float x = (2.0f * xpos) / SCR_WIDTH - 1.0f;
-    float y = 1.0f - (2.0f * ypos) / SCR_HEIGHT;
+    double xpos, ypos;
+    glfwGetCursorPos(window, &xpos, &ypos);
 
-    glm::vec4 rayClip = glm::vec4(x, y, -1.0f, 1.0f);
+    float x = (2.0f * xpos / SCR_WIDTH) - 1.0f;
+    float y = 1.0f - (2.0f * ypos / SCR_HEIGHT);
 
-    // converstion to eye
-    glm::vec4 rayEye = glm::inverse(projection) * rayClip;
-    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
+    float aspectRatio = (float)SCR_WIDTH / (float)SCR_HEIGHT;
+    float tanFOV = tan(glm::radians(camera.Zoom * 0.5f));
 
-    // convertsion to world
-    glm::vec3 rayWorld = glm::vec3(glm::inverse(view) * rayEye);
-    rayWorld = glm::normalize(rayWorld);
+    glm::vec3 rayDirection =
+        glm::normalize(camera.Front + camera.Right * x * aspectRatio * tanFOV + camera.Up * y * tanFOV);
 
-    return Ray(camera.Position, rayWorld);
+    return Ray(camera.Position, rayDirection);
+}
+
+glm::vec3 getWorldPosFromRay(const Ray &ray, float distance)
+{
+    return ray.Origin() + ray.Direction() * distance;
+}
+
+bool rayPlaneIntersection(const Ray &ray, const glm::vec3 &planePoint, const glm::vec3 &planeNormal,
+                          glm::vec3 &hitPoint)
+{
+    float denom = glm::dot(planeNormal, ray.Direction());
+
+    if (std::abs(denom) < 0.0001f)
+        return false;
+
+    float t = glm::dot(planePoint - ray.Origin(), planeNormal) / denom;
+
+    if (t < 0)
+        return false;
+
+    hitPoint = ray.At(t);
+    return true;
 }
 
 void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
@@ -236,20 +315,12 @@ void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
     {
         if (camera.getCameraBlocked())
         {
-            std::cout << "Camera unlocked - cannot pick points" << std::endl;
+            std::cout << "Camera locked - cannot pick points" << std::endl;
             return;
         }
 
+        Ray ray = createRayFromMouse(window);
         mousePressed = true;
-
-        double xpos, ypos;
-        glfwGetCursorPos(window, &xpos, &ypos);
-
-        glm::mat4 view = camera.GetViewMatrix();
-        glm::mat4 projection =
-            glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-
-        Ray ray = createRayFromMouse(xpos, ypos, view, projection);
 
         Cloth *cloth = static_cast<Cloth *>(glfwGetWindowUserPointer(window));
         selectedMassIndex = cloth->pickMassPoint(ray);
@@ -257,16 +328,41 @@ void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
 
         if (massSelected)
         {
-            std::cout << "Picked mass point: " << selectedMassIndex << " (Camera LOCKED)" << std::endl;
+            Mass &mass = cloth->getMass(selectedMassIndex);
+            interactionDistance = glm::length(mass.position - camera.Position);
+            lastMouseWorldPos = getWorldPosFromRay(ray, interactionDistance);
+
+            cuttingPath.clear();
+
+            std::cout << "Picked mass point: " << selectedMassIndex << " at distance: " << interactionDistance
+                      << std::endl;
         }
         else
         {
-            std::cout << "No mass point picked" << std::endl;
+            glm::vec3 planeNormal = glm::vec3(0.0f, 0.0f, 1.0f);
+            glm::vec3 planePoint = glm::vec3(0.0f, 2.5f, 0.0f);
+
+            if (rayPlaneIntersection(ray, planePoint, planeNormal, lastMouseWorldPos))
+            {
+                cuttingPath.clear();
+                cuttingPath.push_back(lastMouseWorldPos);
+                std::cout << "Cutting at plane intersection: (" << lastMouseWorldPos.x << ", " << lastMouseWorldPos.y
+                          << ", " << lastMouseWorldPos.z << ")" << std::endl;
+            }
+            else
+            {
+                interactionDistance = 10.0f;
+                lastMouseWorldPos = getWorldPosFromRay(ray, interactionDistance);
+                cuttingPath.clear();
+                cuttingPath.push_back(lastMouseWorldPos);
+                std::cout << "Cutting (fallback) at distance: " << interactionDistance << std::endl;
+            }
         }
     }
     else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE)
     {
         mousePressed = false;
+
         if (massSelected)
         {
             Cloth *cloth = static_cast<Cloth *>(glfwGetWindowUserPointer(window));
@@ -275,55 +371,41 @@ void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
             selectedMassIndex = -1;
             std::cout << "Mass point released" << std::endl;
         }
+
+        cuttingPath.clear();
     }
 }
 
 void updateGrabbedMass(GLFWwindow *window)
 {
-    if (camera.getCameraBlocked() || !massSelected || !mousePressed)
+    if (camera.getCameraBlocked() || !mousePressed)
         return;
 
-    double xpos, ypos;
-    glfwGetCursorPos(window, &xpos, &ypos);
-
-    glm::mat4 view = camera.GetViewMatrix();
-    glm::mat4 projection =
-        glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-
-    Ray ray = createRayFromMouse(xpos, ypos, view, projection);
-
+    Ray ray = createRayFromMouse(window);
     Cloth *cloth = static_cast<Cloth *>(glfwGetWindowUserPointer(window));
-    Mass &mass = cloth->getMass(selectedMassIndex);
 
-    glm::vec3 cameraForward = glm::normalize(camera.Front);
-    glm::vec3 newPos = mass.position;
-
-    if (std::abs(cameraForward.y) > std::abs(cameraForward.x) && std::abs(cameraForward.y) > std::abs(cameraForward.z))
+    if (massSelected)
     {
-        if (std::abs(ray.Direction().y) > 0.0001f)
-        {
-            float t = (mass.position.y - ray.Origin().y) / ray.Direction().y;
-            if (t > 0)
-            {
-                glm::vec3 intersection = ray.At(t);
-                newPos.x = intersection.x;
-                newPos.z = intersection.z;
-            }
-        }
+        glm::vec3 currentMouseWorldPos = getWorldPosFromRay(ray, interactionDistance);
+        cloth->setMassPosition(selectedMassIndex, currentMouseWorldPos);
+        lastMouseWorldPos = currentMouseWorldPos;
     }
     else
     {
-        if (std::abs(ray.Direction().z) > 0.0001f)
+        glm::vec3 planeNormal = glm::vec3(0.0f, 0.0f, 1.0f);
+        glm::vec3 planePoint = glm::vec3(0.0f, 2.5f, 0.0f);
+        glm::vec3 currentMouseWorldPos;
+
+        if (rayPlaneIntersection(ray, planePoint, planeNormal, currentMouseWorldPos))
         {
-            float t = (mass.position.z - ray.Origin().z) / ray.Direction().z;
-            if (t > 0)
+            cloth->cutSpringsWithRay(ray, lastMouseWorldPos);
+            lastMouseWorldPos = currentMouseWorldPos;
+
+            cuttingPath.push_back(lastMouseWorldPos);
+            if (cuttingPath.size() > MAX_PATH_POINTS)
             {
-                glm::vec3 intersection = ray.At(t);
-                newPos.x = intersection.x;
-                newPos.y = intersection.y;
+                cuttingPath.erase(cuttingPath.begin());
             }
         }
     }
-
-    cloth->setMassPosition(selectedMassIndex, newPos);
 }

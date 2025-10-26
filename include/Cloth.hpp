@@ -38,8 +38,8 @@ struct Spring
     float damping;
     glm::vec3 midpoint;
 
-    Spring(int a, int b, float rest, float k, float d)
-        : a(a), b(b), restLength(rest), stiffness(k), damping(d), midpoint(0.0f)
+    Spring(int a, int b, float rest, const glm::vec3 &mp, float k = 50.0f, float d = 0.01f)
+        : a(a), b(b), restLength(rest), stiffness(k), damping(d), midpoint(mp)
     {
     }
 };
@@ -51,11 +51,15 @@ class Cloth
     void draw(Shader &shader);
     void update(float dt);
     void satisfy();
+    void reset();
 
     // methods to pick masses
     int pickMassPoint(const Ray &ray);
     void setMassPosition(int index, const glm::vec3 &position);
     void releaseMassPoint(int index);
+
+    void checkTearingAroundPoint(int massIndex);
+    void cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos);
 
     // mass getters
     Mass &getMass(int index)
@@ -73,6 +77,9 @@ class Cloth
 
     void rebuildGraphicsData();
     void applyConsts();
+    bool springIntersectsSegment(const Spring &spring, const glm::vec3 &segmentStart, const glm::vec3 &segmentEnd,
+                                 glm::vec3 &intersectionPoint);
+    void initCloth();
 
     std::vector<Mass> masses;
     std::vector<Spring> springs;
@@ -87,4 +94,5 @@ class Cloth
     float floorY = 0.0f;
 
     int selectedMassIndex = -1;
+    glm::vec3 lastMouseWorldPos;
 };
