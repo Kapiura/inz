@@ -70,6 +70,14 @@ class Cloth
     {
         return masses;
     }
+    void changeMassesVisible()
+    {
+        massVisible = !massVisible;
+    }
+    void changeSpringsVisible()
+    {
+        springVisible = !springVisible;
+    }
 
   private:
     int resX, resY;
@@ -84,8 +92,15 @@ class Cloth
     std::vector<Mass> masses;
     std::vector<Spring> springs;
 
+    bool massVisible = true;
+    bool springVisible = true;
+
     std::vector<float> massesVertices;
     std::vector<float> lineVertices;
+
+    std::vector<float> texCoords;
+    std::vector<unsigned int> indices;
+    unsigned int VAO_cloth = 0, VBO_cloth = 0, EBO_cloth = 0;
 
     unsigned int VAO_masses = 0, VBO_masses = 0;
     unsigned int VAO_lines = 0, VBO_lines = 0;

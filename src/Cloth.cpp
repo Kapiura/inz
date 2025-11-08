@@ -10,10 +10,155 @@ glm::vec3 midpoint(const glm::vec3 &a, const glm::vec3 &b)
     return (a + b) * 0.5f;
 }
 
+void Cloth::initCloth()
+{
+    masses.clear();
+    springs.clear();
+
+    masses.reserve(resX * resY);
+    springs.reserve((resX - 1) * resY + resX * (resY - 1) + (resX - 1) * (resY - 1));
+
+    const float massValue = 1.0f;
+
+    float structuralStiff = 80.0f;
+    float structuralDamping = 0.5f;
+    float shearStiff = 60.0f;
+    float shearDamping = 0.3f;
+
+    // masses mesh
+    for (int y = 0; y < resY; y++)
+    {
+        for (int x = 0; x < resX; x++)
+        {
+            float xpos = (x / float(resX - 1)) * width - width / 2.0f;
+            float ypos = 5.0f - (y / float(resY - 1)) * height;
+            float zpos = 0.0f;
+
+            bool isFixed = (y == 0);
+            masses.emplace_back(glm::vec3(xpos, ypos, zpos), massValue, isFixed);
+        }
+    }
+
+    // poziom
+    for (int y = 0; y < resY; y++)
+    {
+        for (int x = 0; x < resX - 1; x++)
+        {
+            int idx1 = y * resX + x;
+            int idx2 = y * resX + (x + 1);
+            float length = glm::distance(masses[idx1].position, masses[idx2].position);
+            glm::vec3 mp = midpoint(masses[idx1].position, masses[idx2].position);
+            springs.emplace_back(idx1, idx2, length, mp, structuralStiff, structuralDamping);
+        }
+    }
+
+    // pion
+    for (int y = 0; y < resY - 1; y++)
+    {
+        for (int x = 0; x < resX; x++)
+        {
+            int idx1 = y * resX + x;
+            int idx2 = (y + 1) * resX + x;
+            float length = glm::distance(masses[idx1].position, masses[idx2].position);
+            glm::vec3 mp = midpoint(masses[idx1].position, masses[idx2].position);
+            springs.emplace_back(idx1, idx2, length, mp, structuralStiff, structuralDamping);
+        }
+    }
+
+    // ukos
+    for (int y = 0; y < resY - 1; y++)
+    {
+        for (int x = 0; x < resX - 1; x++)
+        {
+            int idx1 = y * resX + x;
+            int idx2 = (y + 1) * resX + (x + 1);
+            float length = glm::distance(masses[idx1].position, masses[idx2].position);
+            glm::vec3 mp = midpoint(masses[idx1].position, masses[idx2].position);
+            springs.emplace_back(idx1, idx2, length, mp, shearStiff, shearDamping);
+
+            idx1 = y * resX + (x + 1);
+            idx2 = (y + 1) * resX + x;
+            length = glm::distance(masses[idx1].position, masses[idx2].position);
+            mp = midpoint(masses[idx1].position, masses[idx2].position);
+            springs.emplace_back(idx1, idx2, length, mp, shearStiff, shearDamping);
+        }
+    }
+
+    texCoords.clear();
+    texCoords.reserve(resX * resY * 2);
+
+    for (int y = 0; y < resY; y++)
+    {
+        for (int x = 0; x < resX; x++)
+        {
+            float u = x / float(resX - 1);
+            float v = y / float(resY - 1);
+            texCoords.push_back(u);
+            texCoords.push_back(v);
+        }
+    }
+
+    indices.clear();
+    for (int y = 0; y < resY - 1; y++)
+    {
+        for (int x = 0; x < resX - 1; x++)
+        {
+            int topLeft = y * resX + x;
+            int topRight = topLeft + 1;
+            int bottomLeft = (y + 1) * resX + x;
+            int bottomRight = bottomLeft + 1;
+
+            // Pierwszy trójkąt
+            indices.push_back(topLeft);
+            indices.push_back(bottomLeft);
+            indices.push_back(topRight);
+
+            // Drugi trójkąt
+            indices.push_back(topRight);
+            indices.push_back(bottomLeft);
+            indices.push_back(bottomRight);
+        }
+    }
+
+    rebuildGraphicsData();
+
+    // VAO and VBO for masses
+    if (VAO_masses == 0)
+    {
+        glGenVertexArrays(1, &VAO_masses);
+        glGenBuffers(1, &VBO_masses);
+
+        glBindVertexArray(VAO_masses);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO_masses);
+        glBufferData(GL_ARRAY_BUFFER, massesVertices.size() * sizeof(float), massesVertices.data(), GL_DYNAMIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+        glEnableVertexAttribArray(0);
+    }
+
+    if (VAO_lines == 0)
+    {
+        glGenVertexArrays(1, &VAO_lines);
+        glGenBuffers(1, &VBO_lines);
+
+        glBindVertexArray(VAO_lines);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO_lines);
+        glBufferData(GL_ARRAY_BUFFER, lineVertices.size() * sizeof(float), lineVertices.data(), GL_DYNAMIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+        glEnableVertexAttribArray(0);
+    }
+}
+
 AABB Mass::getAABB() const
 {
     float radius = 0.2f;
     return AABB(position - glm::vec3(radius), position + glm::vec3(radius));
+}
+
+void Cloth::reset()
+{
+    selectedMassIndex = -1;
+    initCloth();
+    std::cout << "Rest cloth\n";
 }
 
 Cloth::Cloth(float width, float height, int resX, int resY, float floorY)
@@ -54,20 +199,54 @@ void Cloth::rebuildGraphicsData()
         glBindBuffer(GL_ARRAY_BUFFER, VBO_lines);
         glBufferData(GL_ARRAY_BUFFER, lineVertices.size() * sizeof(float), lineVertices.data(), GL_DYNAMIC_DRAW);
     }
+
+    if (VAO_cloth == 0)
+    {
+        glGenVertexArrays(1, &VAO_cloth);
+        glGenBuffers(1, &VBO_cloth);
+        glGenBuffers(1, &EBO_cloth);
+    }
+
+    glBindVertexArray(VAO_cloth);
+
+    // Pozycje
+    glBindBuffer(GL_ARRAY_BUFFER, VBO_cloth);
+    glBufferData(GL_ARRAY_BUFFER, massesVertices.size() * sizeof(float), massesVertices.data(), GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+
+    // UV (będzie w osobnym VBO lub interleaved)
+    // Opcja 1: Osobny VBO dla UV
+    GLuint VBO_uv;
+    glGenBuffers(1, &VBO_uv);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO_uv);
+    glBufferData(GL_ARRAY_BUFFER, texCoords.size() * sizeof(float), texCoords.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(1);
+
+    // Indeksy
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO_cloth);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 }
 
 void Cloth::draw(Shader &shader)
 {
     // draw springs as lines
-    shader.setVec3("color", glm::vec3(0.0f, 0.0f, 1.0f));
-    glBindVertexArray(VAO_lines);
-    glDrawArrays(GL_LINES, 0, lineVertices.size() / 3);
+    if (springVisible)
+    {
+        shader.setVec3("color", glm::vec3(0.0f, 0.0f, 1.0f));
+        glBindVertexArray(VAO_lines);
+        glDrawArrays(GL_LINES, 0, lineVertices.size() / 3);
+    }
 
     // draw all masses
-    shader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
-    glPointSize(5.0f);
-    glBindVertexArray(VAO_masses);
-    glDrawArrays(GL_POINTS, 0, massesVertices.size() / 3);
+    if (massVisible)
+    {
+        shader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
+        glPointSize(5.0f);
+        glBindVertexArray(VAO_masses);
+        glDrawArrays(GL_POINTS, 0, massesVertices.size() / 3);
+    }
 
     // selected mass is highlighted
     if (selectedMassIndex != -1)
@@ -377,113 +556,4 @@ void Cloth::cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos)
 
         rebuildGraphicsData();
     }
-}
-
-void Cloth::initCloth()
-{
-    masses.clear();
-    springs.clear();
-
-    masses.reserve(resX * resY);
-    springs.reserve((resX - 1) * resY + resX * (resY - 1) + (resX - 1) * (resY - 1));
-
-    const float massValue = 1.0f;
-
-    float structuralStiff = 80.0f;
-    float structuralDamping = 0.5f;
-    float shearStiff = 60.0f;
-    float shearDamping = 0.3f;
-
-    // masses mesh
-    for (int y = 0; y < resY; y++)
-    {
-        for (int x = 0; x < resX; x++)
-        {
-            float xpos = (x / float(resX - 1)) * width - width / 2.0f;
-            float ypos = 5.0f - (y / float(resY - 1)) * height;
-            float zpos = 0.0f;
-
-            bool isFixed = (y == 0);
-            masses.emplace_back(glm::vec3(xpos, ypos, zpos), massValue, isFixed);
-        }
-    }
-
-    // poziom
-    for (int y = 0; y < resY; y++)
-    {
-        for (int x = 0; x < resX - 1; x++)
-        {
-            int idx1 = y * resX + x;
-            int idx2 = y * resX + (x + 1);
-            float length = glm::distance(masses[idx1].position, masses[idx2].position);
-            glm::vec3 mp = midpoint(masses[idx1].position, masses[idx2].position);
-            springs.emplace_back(idx1, idx2, length, mp, structuralStiff, structuralDamping);
-        }
-    }
-
-    // pion
-    for (int y = 0; y < resY - 1; y++)
-    {
-        for (int x = 0; x < resX; x++)
-        {
-            int idx1 = y * resX + x;
-            int idx2 = (y + 1) * resX + x;
-            float length = glm::distance(masses[idx1].position, masses[idx2].position);
-            glm::vec3 mp = midpoint(masses[idx1].position, masses[idx2].position);
-            springs.emplace_back(idx1, idx2, length, mp, structuralStiff, structuralDamping);
-        }
-    }
-
-    // ukos
-    for (int y = 0; y < resY - 1; y++)
-    {
-        for (int x = 0; x < resX - 1; x++)
-        {
-            int idx1 = y * resX + x;
-            int idx2 = (y + 1) * resX + (x + 1);
-            float length = glm::distance(masses[idx1].position, masses[idx2].position);
-            glm::vec3 mp = midpoint(masses[idx1].position, masses[idx2].position);
-            springs.emplace_back(idx1, idx2, length, mp, shearStiff, shearDamping);
-
-            idx1 = y * resX + (x + 1);
-            idx2 = (y + 1) * resX + x;
-            length = glm::distance(masses[idx1].position, masses[idx2].position);
-            mp = midpoint(masses[idx1].position, masses[idx2].position);
-            springs.emplace_back(idx1, idx2, length, mp, shearStiff, shearDamping);
-        }
-    }
-
-    rebuildGraphicsData();
-
-    // VAO and VBO for masses
-    if (VAO_masses == 0)
-    {
-        glGenVertexArrays(1, &VAO_masses);
-        glGenBuffers(1, &VBO_masses);
-
-        glBindVertexArray(VAO_masses);
-        glBindBuffer(GL_ARRAY_BUFFER, VBO_masses);
-        glBufferData(GL_ARRAY_BUFFER, massesVertices.size() * sizeof(float), massesVertices.data(), GL_DYNAMIC_DRAW);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
-        glEnableVertexAttribArray(0);
-    }
-
-    if (VAO_lines == 0)
-    {
-        glGenVertexArrays(1, &VAO_lines);
-        glGenBuffers(1, &VBO_lines);
-
-        glBindVertexArray(VAO_lines);
-        glBindBuffer(GL_ARRAY_BUFFER, VBO_lines);
-        glBufferData(GL_ARRAY_BUFFER, lineVertices.size() * sizeof(float), lineVertices.data(), GL_DYNAMIC_DRAW);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
-        glEnableVertexAttribArray(0);
-    }
-}
-
-void Cloth::reset()
-{
-    selectedMassIndex = -1;
-    initCloth();
-    std::cout << "Rest cloth\n";
 }
