@@ -12,6 +12,7 @@
 #include "Camera.hpp"
 #include "Cloth.hpp"
 #include "Shader.hpp"
+#include "Texture.hpp"
 #include "Ray.hpp"
 
 // GLOBAL STATE
@@ -65,6 +66,18 @@ int main()
     shader.use();
 
     Cloth cloth(5.0f, 5.0f, 50, 50, -10.0f);
+
+    try
+    {
+        Texture *clothTexture = new Texture("../img/textures/rainbowFlag.png");
+        cloth.setTexture(clothTexture);
+        std::cout << "Texture loaded successfully\n";
+    }
+    catch (...)
+    {
+        std::cout << "No texture found, using solid color\n";
+    }
+
     glfwSetWindowUserPointer(window, &cloth);
 
     setupCallbacks(window);
@@ -191,6 +204,10 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         std::cout << "Toggled spring visibility" << std::endl;
         break;
 
+    case GLFW_KEY_X:
+        cloth->toggleSelfCollision();
+        break;
+
     case GLFW_KEY_C: {
         camera.unLockCamera(window);
         firstMouse = true;
@@ -233,7 +250,6 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
         Ray ray = createRayFromMouse(window);
         mousePressed = true;
 
-        // Try to pick a mass point
         selectedMassIndex = cloth->pickMassPoint(ray);
         massSelected = (selectedMassIndex != -1);
 
@@ -249,7 +265,6 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
         }
         else
         {
-            // Start cutting
             glm::vec3 planeNormal = glm::vec3(0.0f, 0.0f, 1.0f);
             glm::vec3 planePoint = glm::vec3(0.0f, 2.5f, 0.0f);
 
@@ -382,6 +397,7 @@ void renderCuttingPath(Shader &shader)
     if (cuttingPath.empty() || cuttingPath.size() < 2)
         return;
 
+    shader.setBool("useTexture", false);
     shader.setVec3("color", glm::vec3(1.0f, 1.0f, 0.0f));
     glLineWidth(3.0f);
 

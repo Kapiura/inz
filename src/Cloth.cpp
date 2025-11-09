@@ -4,16 +4,171 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
+#include <queue>
 
 glm::vec3 midpoint(const glm::vec3 &a, const glm::vec3 &b)
 {
     return (a + b) * 0.5f;
 }
 
+glm::vec3 Cloth::getTriangleNormal(const Triangle &tri) const
+{
+    const glm::vec3 &p0 = masses[tri.a].position;
+    const glm::vec3 &p1 = masses[tri.b].position;
+    const glm::vec3 &p2 = masses[tri.c].position;
+
+    glm::vec3 edge1 = p1 - p0;
+    glm::vec3 edge2 = p2 - p0;
+
+    glm::vec3 normal = glm::cross(edge1, edge2);
+    float len = glm::length(normal);
+
+    if (len > 0.0001f)
+        return normal / len;
+
+    return glm::vec3(0.0f, 0.0f, 1.0f);
+}
+
+bool Cloth::isPointInTriangle(const glm::vec3 &p, const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c) const
+{
+    glm::vec3 v0 = c - a;
+    glm::vec3 v1 = b - a;
+    glm::vec3 v2 = p - a;
+
+    float dot00 = glm::dot(v0, v0);
+    float dot01 = glm::dot(v0, v1);
+    float dot02 = glm::dot(v0, v2);
+    float dot11 = glm::dot(v1, v1);
+    float dot12 = glm::dot(v1, v2);
+
+    float invDenom = 1.0f / (dot00 * dot11 - dot01 * dot01);
+    float u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+    float v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+
+    return (u >= -0.001f) && (v >= -0.001f) && (u + v <= 1.001f);
+}
+
+bool Cloth::areSpringMidpointsConnected(int springA, int springB) const
+{
+    const Spring &sA = springs[springA];
+    const Spring &sB = springs[springB];
+
+    return (sA.a == sB.a || sA.a == sB.b || sA.b == sB.a || sA.b == sB.b);
+}
+
+bool Cloth::springMidpointTriangleCollision(const glm::vec3 &midpoint, int springIndex, const Triangle &tri,
+                                            glm::vec3 &normal, float &distance)
+{
+    const glm::vec3 &p0 = masses[tri.a].position;
+    const glm::vec3 &p1 = masses[tri.b].position;
+    const glm::vec3 &p2 = masses[tri.c].position;
+
+    normal = getTriangleNormal(tri);
+
+    float dist = glm::dot(midpoint - p0, normal);
+    distance = std::abs(dist);
+
+    if (distance > collisionThickness)
+        return false;
+
+    const Spring &spring = springs[springIndex];
+    if (tri.a == spring.a || tri.a == spring.b || tri.b == spring.a || tri.b == spring.b || tri.c == spring.a ||
+        tri.c == spring.b)
+        return false;
+
+    glm::vec3 projectedPoint = midpoint - normal * dist;
+
+    if (!isPointInTriangle(projectedPoint, p0, p1, p2))
+        return false;
+
+    return true;
+}
+
+void Cloth::handleSelfCollision()
+{
+    if (!selfCollisionEnabled)
+        return;
+
+    const float responseStrength = 0.4f;
+    const float massResponseRatio = 0.6f;
+
+    for (int i = 0; i < springs.size(); ++i)
+    {
+        Spring &spring = springs[i];
+
+        if (masses[spring.a].fixed && masses[spring.b].fixed)
+            continue;
+
+        glm::vec3 currentMidpoint = spring.getCurrentMidpoint(masses);
+
+        for (int t = 0; t < triangles.size(); ++t)
+        {
+            const Triangle &tri = triangles[t];
+
+            if (tri.a == spring.a || tri.a == spring.b || tri.b == spring.a || tri.b == spring.b || tri.c == spring.a ||
+                tri.c == spring.b)
+                continue;
+
+            bool isAdjacent = false;
+            for (const auto &checkSpring : springs)
+            {
+                bool belongsToTriangle = (checkSpring.a == tri.a && checkSpring.b == tri.b) ||
+                                         (checkSpring.a == tri.b && checkSpring.b == tri.a) ||
+                                         (checkSpring.a == tri.b && checkSpring.b == tri.c) ||
+                                         (checkSpring.a == tri.c && checkSpring.b == tri.b) ||
+                                         (checkSpring.a == tri.c && checkSpring.b == tri.a) ||
+                                         (checkSpring.a == tri.a && checkSpring.b == tri.c);
+
+                if (belongsToTriangle)
+                {
+                    if (checkSpring.a == spring.a || checkSpring.a == spring.b || checkSpring.b == spring.a ||
+                        checkSpring.b == spring.b)
+                    {
+                        isAdjacent = true;
+                        break;
+                    }
+                }
+            }
+
+            if (isAdjacent)
+                continue;
+
+            glm::vec3 normal;
+            float distance;
+
+            if (springMidpointTriangleCollision(currentMidpoint, i, tri, normal, distance))
+            {
+                const glm::vec3 &p0 = masses[tri.a].position;
+                float side = glm::dot(currentMidpoint - p0, normal);
+
+                glm::vec3 correction = normal * (collisionThickness - distance) * responseStrength;
+
+                if (side < 0)
+                    correction = -correction;
+
+                if (!masses[spring.a].fixed)
+                    masses[spring.a].position += correction * massResponseRatio;
+                if (!masses[spring.b].fixed)
+                    masses[spring.b].position += correction * massResponseRatio;
+
+                float triCorrection = (1.0f - massResponseRatio) / 3.0f;
+                if (!masses[tri.a].fixed)
+                    masses[tri.a].position -= correction * triCorrection;
+                if (!masses[tri.b].fixed)
+                    masses[tri.b].position -= correction * triCorrection;
+                if (!masses[tri.c].fixed)
+                    masses[tri.c].position -= correction * triCorrection;
+            }
+        }
+    }
+}
+
 void Cloth::initCloth()
 {
     masses.clear();
     springs.clear();
+    triangles.clear();
 
     masses.reserve(resX * resY);
     springs.reserve((resX - 1) * resY + resX * (resY - 1) + (resX - 1) * (resY - 1));
@@ -25,7 +180,6 @@ void Cloth::initCloth()
     float shearStiff = 60.0f;
     float shearDamping = 0.3f;
 
-    // masses mesh
     for (int y = 0; y < resY; y++)
     {
         for (int x = 0; x < resX; x++)
@@ -34,12 +188,14 @@ void Cloth::initCloth()
             float ypos = 5.0f - (y / float(resY - 1)) * height;
             float zpos = 0.0f;
 
+            float u = x / float(resX - 1);
+            float v = y / float(resY - 1);
+
             bool isFixed = (y == 0);
-            masses.emplace_back(glm::vec3(xpos, ypos, zpos), massValue, isFixed);
+            masses.emplace_back(glm::vec3(xpos, ypos, zpos), massValue, isFixed, glm::vec2(u, v));
         }
     }
 
-    // poziom
     for (int y = 0; y < resY; y++)
     {
         for (int x = 0; x < resX - 1; x++)
@@ -52,7 +208,6 @@ void Cloth::initCloth()
         }
     }
 
-    // pion
     for (int y = 0; y < resY - 1; y++)
     {
         for (int x = 0; x < resX; x++)
@@ -65,7 +220,6 @@ void Cloth::initCloth()
         }
     }
 
-    // ukos
     for (int y = 0; y < resY - 1; y++)
     {
         for (int x = 0; x < resX - 1; x++)
@@ -84,21 +238,6 @@ void Cloth::initCloth()
         }
     }
 
-    texCoords.clear();
-    texCoords.reserve(resX * resY * 2);
-
-    for (int y = 0; y < resY; y++)
-    {
-        for (int x = 0; x < resX; x++)
-        {
-            float u = x / float(resX - 1);
-            float v = y / float(resY - 1);
-            texCoords.push_back(u);
-            texCoords.push_back(v);
-        }
-    }
-
-    indices.clear();
     for (int y = 0; y < resY - 1; y++)
     {
         for (int x = 0; x < resX - 1; x++)
@@ -108,21 +247,13 @@ void Cloth::initCloth()
             int bottomLeft = (y + 1) * resX + x;
             int bottomRight = bottomLeft + 1;
 
-            // Pierwszy trójkąt
-            indices.push_back(topLeft);
-            indices.push_back(bottomLeft);
-            indices.push_back(topRight);
-
-            // Drugi trójkąt
-            indices.push_back(topRight);
-            indices.push_back(bottomLeft);
-            indices.push_back(bottomRight);
+            triangles.push_back({topLeft, bottomLeft, topRight});
+            triangles.push_back({topRight, bottomLeft, bottomRight});
         }
     }
 
     rebuildGraphicsData();
 
-    // VAO and VBO for masses
     if (VAO_masses == 0)
     {
         glGenVertexArrays(1, &VAO_masses);
@@ -146,6 +277,22 @@ void Cloth::initCloth()
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
         glEnableVertexAttribArray(0);
     }
+
+    if (VAO_cloth == 0)
+    {
+        glGenVertexArrays(1, &VAO_cloth);
+        glGenBuffers(1, &VBO_cloth);
+        glGenBuffers(1, &EBO_cloth);
+
+        glBindVertexArray(VAO_cloth);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO_cloth);
+        glBufferData(GL_ARRAY_BUFFER, massesVertices.size() * sizeof(float), massesVertices.data(), GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO_cloth);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_DYNAMIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+        glEnableVertexAttribArray(0);
+    }
 }
 
 AABB Mass::getAABB() const
@@ -158,7 +305,7 @@ void Cloth::reset()
 {
     selectedMassIndex = -1;
     initCloth();
-    std::cout << "Rest cloth\n";
+    std::cout << "Reset cloth\n";
 }
 
 Cloth::Cloth(float width, float height, int resX, int resY, float floorY)
@@ -166,13 +313,13 @@ Cloth::Cloth(float width, float height, int resX, int resY, float floorY)
 {
     VAO_masses = 0, VBO_masses = 0;
     VAO_lines = 0, VBO_lines = 0;
+    VAO_cloth = 0, VBO_cloth = 0, EBO_cloth = 0;
 
     initCloth();
 }
 
 void Cloth::rebuildGraphicsData()
 {
-    // rebuild masses
     massesVertices.clear();
     for (const auto &mass : masses)
     {
@@ -181,7 +328,6 @@ void Cloth::rebuildGraphicsData()
         massesVertices.push_back(mass.position.z);
     }
 
-    // rebuild spring lines
     lineVertices.clear();
     for (const auto &spring : springs)
     {
@@ -200,63 +346,93 @@ void Cloth::rebuildGraphicsData()
         glBufferData(GL_ARRAY_BUFFER, lineVertices.size() * sizeof(float), lineVertices.data(), GL_DYNAMIC_DRAW);
     }
 
+    indices.clear();
+    for (const auto &tri : triangles)
+    {
+        indices.push_back(tri.a);
+        indices.push_back(tri.b);
+        indices.push_back(tri.c);
+    }
+
+    std::vector<float> texCoords;
+    texCoords.reserve(masses.size() * 2);
+    for (const auto &mass : masses)
+    {
+        texCoords.push_back(mass.uv.x);
+        texCoords.push_back(mass.uv.y);
+    }
+
     if (VAO_cloth == 0)
     {
         glGenVertexArrays(1, &VAO_cloth);
         glGenBuffers(1, &VBO_cloth);
+        glGenBuffers(1, &VBO_uv);
         glGenBuffers(1, &EBO_cloth);
     }
 
     glBindVertexArray(VAO_cloth);
 
-    // Pozycje
     glBindBuffer(GL_ARRAY_BUFFER, VBO_cloth);
     glBufferData(GL_ARRAY_BUFFER, massesVertices.size() * sizeof(float), massesVertices.data(), GL_DYNAMIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
 
-    // UV (będzie w osobnym VBO lub interleaved)
-    // Opcja 1: Osobny VBO dla UV
-    GLuint VBO_uv;
-    glGenBuffers(1, &VBO_uv);
     glBindBuffer(GL_ARRAY_BUFFER, VBO_uv);
     glBufferData(GL_ARRAY_BUFFER, texCoords.size() * sizeof(float), texCoords.data(), GL_STATIC_DRAW);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(1);
 
-    // Indeksy
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO_cloth);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_DYNAMIC_DRAW);
 }
 
 void Cloth::draw(Shader &shader)
 {
-    // draw springs as lines
     if (springVisible)
     {
+        shader.setBool("useTexture", false);
         shader.setVec3("color", glm::vec3(0.0f, 0.0f, 1.0f));
         glBindVertexArray(VAO_lines);
         glDrawArrays(GL_LINES, 0, lineVertices.size() / 3);
     }
 
-    // draw all masses
     if (massVisible)
     {
+        shader.setBool("useTexture", false);
         shader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
         glPointSize(5.0f);
         glBindVertexArray(VAO_masses);
         glDrawArrays(GL_POINTS, 0, massesVertices.size() / 3);
+
+        if (selectedMassIndex != -1)
+        {
+            shader.setVec3("color", glm::vec3(1.0f, 1.0f, 0.0f));
+            glPointSize(10.0f);
+            glDrawArrays(GL_POINTS, selectedMassIndex, 1);
+        }
     }
 
-    // selected mass is highlighted
-    if (selectedMassIndex != -1)
+    if (texture != nullptr)
     {
-        shader.setVec3("color", glm::vec3(1.0f, 1.0f, 0.0f));
-        glPointSize(10.0f);
-        glDrawArrays(GL_POINTS, selectedMassIndex, 1);
+        shader.setBool("useTexture", true);
+        texture->bind(0);
+        shader.setInt("clothTexture", 0);
     }
+    else
+    {
+        shader.setBool("useTexture", false);
+        shader.setVec3("color", glm::vec3(0.8f, 0.8f, 0.8f));
+    }
+
+    glBindVertexArray(VAO_cloth);
+    glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
 
     glBindVertexArray(0);
+}
+
+void Cloth::setTexture(Texture *tex)
+{
+    texture = tex;
 }
 
 void Cloth::update(float dt)
@@ -308,9 +484,10 @@ void Cloth::update(float dt)
                 }
             }
         }
+
+        handleSelfCollision();
     }
 
-    // floor collision
     for (auto &mass : masses)
     {
         if (mass.position.y < floorY)
@@ -554,6 +731,60 @@ void Cloth::cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos)
             springs.erase(springs.begin() + index);
         }
 
+        rebuildTrianglesFromSprings();
         rebuildGraphicsData();
+
+        std::cout << "Cut " << springsToCut.size() << " springs\n";
     }
+}
+
+void Cloth::rebuildTrianglesFromSprings()
+{
+    triangles.clear();
+
+    auto springExists = [this](int a, int b) -> bool {
+        for (const auto &s : springs)
+        {
+            if ((s.a == a && s.b == b) || (s.a == b && s.b == a))
+                return true;
+        }
+        return false;
+    };
+
+    for (int y = 0; y < resY - 1; y++)
+    {
+        for (int x = 0; x < resX - 1; x++)
+        {
+            int topLeft = y * resX + x;
+            int topRight = topLeft + 1;
+            int bottomLeft = (y + 1) * resX + x;
+            int bottomRight = bottomLeft + 1;
+
+            bool hasEdge1 = springExists(topLeft, bottomLeft);
+            bool hasEdge2 = springExists(bottomLeft, topRight);
+            bool hasEdge3 = springExists(topRight, topLeft);
+
+            if (hasEdge1 && hasEdge2 && hasEdge3)
+            {
+                triangles.push_back({topLeft, bottomLeft, topRight});
+            }
+
+            bool hasEdge4 = springExists(topRight, bottomLeft);
+            bool hasEdge5 = springExists(bottomLeft, bottomRight);
+            bool hasEdge6 = springExists(bottomRight, topRight);
+
+            if (hasEdge4 && hasEdge5 && hasEdge6)
+            {
+                triangles.push_back({topRight, bottomLeft, bottomRight});
+            }
+        }
+    }
+}
+
+void Cloth::removeIsolatedMasses()
+{
+}
+
+void Cloth::satisfy()
+{
 }

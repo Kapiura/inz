@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Shader.hpp"
+#include "Texture.hpp"
 
 class AABB;
 class Ray;
@@ -18,11 +19,13 @@ struct Mass
     glm::vec3 force;
     float mass;
     bool fixed;
+    glm::vec2 uv;
 
     AABB getAABB() const;
 
-    Mass(const glm::vec3 &pos, float m, bool fix = false)
-        : position(pos), prevPosition(pos), velocity(0.0f), acceleration(0.0f), force(0.0f), mass(m), fixed(fix)
+    Mass(const glm::vec3 &pos, float m, bool fix = false, const glm::vec2 &texCoord = glm::vec2(0.0f))
+        : position(pos), prevPosition(pos), velocity(0.0f), acceleration(0.0f), force(0.0f), mass(m), fixed(fix),
+          uv(texCoord)
     {
     }
 
@@ -44,6 +47,21 @@ struct Spring
     }
 };
 
+struct Triangle
+{
+    int a, b, c;
+
+    Triangle(int a, int b, int c) : a(a), b(b), c(c)
+    {
+    }
+
+    bool sharesVertexWith(const Triangle &other) const
+    {
+        return (a == other.a || a == other.b || a == other.c || b == other.a || b == other.b || b == other.c ||
+                c == other.a || c == other.b || c == other.c);
+    }
+};
+
 class Cloth
 {
   public:
@@ -53,7 +71,6 @@ class Cloth
     void satisfy();
     void reset();
 
-    // methods to pick masses
     int pickMassPoint(const Ray &ray);
     void setMassPosition(int index, const glm::vec3 &position);
     void releaseMassPoint(int index);
@@ -61,7 +78,21 @@ class Cloth
     void checkTearingAroundPoint(int massIndex);
     void cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos);
 
-    // mass getters
+    void rebuildTrianglesFromSprings();
+    void removeIsolatedMasses();
+
+    void setTexture(Texture *tex);
+
+    void toggleSelfCollision()
+    {
+        selfCollisionEnabled = !selfCollisionEnabled;
+        std::cout << "Self-collision: " << (selfCollisionEnabled ? "ENABLED" : "DISABLED") << std::endl;
+    }
+    bool isSelfCollisionEnabled() const
+    {
+        return selfCollisionEnabled;
+    }
+
     Mass &getMass(int index)
     {
         return masses[index];
@@ -79,6 +110,15 @@ class Cloth
         springVisible = !springVisible;
     }
 
+    const float getClothWidth() const
+    {
+        return width;
+    }
+    const float getClothHeight() const
+    {
+        return height;
+    }
+
   private:
     int resX, resY;
     float width, height;
@@ -89,18 +129,27 @@ class Cloth
                                  glm::vec3 &intersectionPoint);
     void initCloth();
 
+    void handleSelfCollision();
+    bool areSpringMidpointsConnected(int springA, int springB) const;
+    glm::vec3 getTriangleNormal(const Triangle &tri) const;
+    bool isPointInTriangle(const glm::vec3 &p, const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c) const;
+    bool springMidpointTriangleCollision(const glm::vec3 &midpoint, int springIndex, const Triangle &tri,
+                                         glm::vec3 &normal, float &distance);
+
     std::vector<Mass> masses;
     std::vector<Spring> springs;
+    std::vector<Triangle> triangles;
 
-    bool massVisible = true;
-    bool springVisible = true;
+    bool massVisible = false;
+    bool springVisible = false;
+    bool selfCollisionEnabled = false;
 
     std::vector<float> massesVertices;
     std::vector<float> lineVertices;
 
-    std::vector<float> texCoords;
     std::vector<unsigned int> indices;
-    unsigned int VAO_cloth = 0, VBO_cloth = 0, EBO_cloth = 0;
+
+    unsigned int VAO_cloth = 0, VBO_cloth = 0, VBO_uv = 0, EBO_cloth = 0;
 
     unsigned int VAO_masses = 0, VBO_masses = 0;
     unsigned int VAO_lines = 0, VBO_lines = 0;
@@ -108,6 +157,10 @@ class Cloth
     const float gravity = -9.81f;
     float floorY = 0.0f;
 
+    const float collisionThickness = 0.15f;
+
     int selectedMassIndex = -1;
     glm::vec3 lastMouseWorldPos;
+
+    Texture *texture = nullptr;
 };

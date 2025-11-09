@@ -14,6 +14,7 @@ add_executable(my_opengl_in_test
     src/Ray.cpp
     src/Shader.cpp
     src/Cloth.cpp
+    src/Texture.cpp
 )
 
 find_package(OpenGL REQUIRED)
