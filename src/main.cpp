@@ -204,10 +204,6 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         std::cout << "Toggled spring visibility" << std::endl;
         break;
 
-    case GLFW_KEY_X:
-        cloth->toggleSelfCollision();
-        break;
-
     case GLFW_KEY_C: {
         camera.unLockCamera(window);
         firstMouse = true;

@@ -83,16 +83,6 @@ class Cloth
 
     void setTexture(Texture *tex);
 
-    void toggleSelfCollision()
-    {
-        selfCollisionEnabled = !selfCollisionEnabled;
-        std::cout << "Self-collision: " << (selfCollisionEnabled ? "ENABLED" : "DISABLED") << std::endl;
-    }
-    bool isSelfCollisionEnabled() const
-    {
-        return selfCollisionEnabled;
-    }
-
     Mass &getMass(int index)
     {
         return masses[index];
@@ -129,12 +119,9 @@ class Cloth
                                  glm::vec3 &intersectionPoint);
     void initCloth();
 
-    void handleSelfCollision();
     bool areSpringMidpointsConnected(int springA, int springB) const;
     glm::vec3 getTriangleNormal(const Triangle &tri) const;
     bool isPointInTriangle(const glm::vec3 &p, const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c) const;
-    bool springMidpointTriangleCollision(const glm::vec3 &midpoint, int springIndex, const Triangle &tri,
-                                         glm::vec3 &normal, float &distance);
 
     std::vector<Mass> masses;
     std::vector<Spring> springs;
@@ -142,7 +129,6 @@ class Cloth
 
     bool massVisible = false;
     bool springVisible = false;
-    bool selfCollisionEnabled = false;
 
     std::vector<float> massesVertices;
     std::vector<float> lineVertices;
@@ -156,8 +142,6 @@ class Cloth
 
     const float gravity = -9.81f;
     float floorY = 0.0f;
-
-    const float collisionThickness = 0.15f;
 
     int selectedMassIndex = -1;
     glm::vec3 lastMouseWorldPos;

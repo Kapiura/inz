@@ -57,113 +57,6 @@ bool Cloth::areSpringMidpointsConnected(int springA, int springB) const
     return (sA.a == sB.a || sA.a == sB.b || sA.b == sB.a || sA.b == sB.b);
 }
 
-bool Cloth::springMidpointTriangleCollision(const glm::vec3 &midpoint, int springIndex, const Triangle &tri,
-                                            glm::vec3 &normal, float &distance)
-{
-    const glm::vec3 &p0 = masses[tri.a].position;
-    const glm::vec3 &p1 = masses[tri.b].position;
-    const glm::vec3 &p2 = masses[tri.c].position;
-
-    normal = getTriangleNormal(tri);
-
-    float dist = glm::dot(midpoint - p0, normal);
-    distance = std::abs(dist);
-
-    if (distance > collisionThickness)
-        return false;
-
-    const Spring &spring = springs[springIndex];
-    if (tri.a == spring.a || tri.a == spring.b || tri.b == spring.a || tri.b == spring.b || tri.c == spring.a ||
-        tri.c == spring.b)
-        return false;
-
-    glm::vec3 projectedPoint = midpoint - normal * dist;
-
-    if (!isPointInTriangle(projectedPoint, p0, p1, p2))
-        return false;
-
-    return true;
-}
-
-void Cloth::handleSelfCollision()
-{
-    if (!selfCollisionEnabled)
-        return;
-
-    const float responseStrength = 0.4f;
-    const float massResponseRatio = 0.6f;
-
-    for (int i = 0; i < springs.size(); ++i)
-    {
-        Spring &spring = springs[i];
-
-        if (masses[spring.a].fixed && masses[spring.b].fixed)
-            continue;
-
-        glm::vec3 currentMidpoint = spring.getCurrentMidpoint(masses);
-
-        for (int t = 0; t < triangles.size(); ++t)
-        {
-            const Triangle &tri = triangles[t];
-
-            if (tri.a == spring.a || tri.a == spring.b || tri.b == spring.a || tri.b == spring.b || tri.c == spring.a ||
-                tri.c == spring.b)
-                continue;
-
-            bool isAdjacent = false;
-            for (const auto &checkSpring : springs)
-            {
-                bool belongsToTriangle = (checkSpring.a == tri.a && checkSpring.b == tri.b) ||
-                                         (checkSpring.a == tri.b && checkSpring.b == tri.a) ||
-                                         (checkSpring.a == tri.b && checkSpring.b == tri.c) ||
-                                         (checkSpring.a == tri.c && checkSpring.b == tri.b) ||
-                                         (checkSpring.a == tri.c && checkSpring.b == tri.a) ||
-                                         (checkSpring.a == tri.a && checkSpring.b == tri.c);
-
-                if (belongsToTriangle)
-                {
-                    if (checkSpring.a == spring.a || checkSpring.a == spring.b || checkSpring.b == spring.a ||
-                        checkSpring.b == spring.b)
-                    {
-                        isAdjacent = true;
-                        break;
-                    }
-                }
-            }
-
-            if (isAdjacent)
-                continue;
-
-            glm::vec3 normal;
-            float distance;
-
-            if (springMidpointTriangleCollision(currentMidpoint, i, tri, normal, distance))
-            {
-                const glm::vec3 &p0 = masses[tri.a].position;
-                float side = glm::dot(currentMidpoint - p0, normal);
-
-                glm::vec3 correction = normal * (collisionThickness - distance) * responseStrength;
-
-                if (side < 0)
-                    correction = -correction;
-
-                if (!masses[spring.a].fixed)
-                    masses[spring.a].position += correction * massResponseRatio;
-                if (!masses[spring.b].fixed)
-                    masses[spring.b].position += correction * massResponseRatio;
-
-                float triCorrection = (1.0f - massResponseRatio) / 3.0f;
-                if (!masses[tri.a].fixed)
-                    masses[tri.a].position -= correction * triCorrection;
-                if (!masses[tri.b].fixed)
-                    masses[tri.b].position -= correction * triCorrection;
-                if (!masses[tri.c].fixed)
-                    masses[tri.c].position -= correction * triCorrection;
-            }
-        }
-    }
-}
-
 void Cloth::initCloth()
 {
     masses.clear();
@@ -485,7 +378,6 @@ void Cloth::update(float dt)
             }
         }
 
-        handleSelfCollision();
     }
 
     for (auto &mass : masses)

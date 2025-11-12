@@ -13,3 +13,6 @@
 [   ] - Cienie
 [   ] - Analiza parametrow wybranych punktów
 [   ] - Generowanie danych pomiarowych
+
+
+[   ] - Trzeba zrobic jakis inny pomysl rozrywania tej tkaniny bo za bardzo laguje
