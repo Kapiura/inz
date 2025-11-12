@@ -69,7 +69,7 @@ int main()
 
     try
     {
-        Texture *clothTexture = new Texture("../img/textures/rainbowFlag.png");
+        Texture *clothTexture = new Texture("../img/textures/awesomeface.png");
         cloth.setTexture(clothTexture);
         std::cout << "Texture loaded successfully\n";
     }

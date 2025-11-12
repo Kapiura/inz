@@ -16,3 +16,4 @@
 
 
 [   ] - Trzeba zrobic jakis inny pomysl rozrywania tej tkaniny bo za bardzo laguje
+[   ] - Trzeba zrobic fix przy rozdzielaniu pojedynczej masy
