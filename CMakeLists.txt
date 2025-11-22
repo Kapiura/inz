@@ -15,6 +15,7 @@ add_executable(my_opengl_in_test
     src/Shader.cpp
     src/Cloth.cpp
     src/Texture.cpp
+    src/Skybox.cpp
 )
 
 find_package(OpenGL REQUIRED)

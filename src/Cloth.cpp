@@ -6,47 +6,11 @@
 #include <cmath>
 #include <set>
 #include <queue>
+#include <stb_image.h>
 
 glm::vec3 midpoint(const glm::vec3 &a, const glm::vec3 &b)
 {
     return (a + b) * 0.5f;
-}
-
-glm::vec3 Cloth::getTriangleNormal(const Triangle &tri) const
-{
-    const glm::vec3 &p0 = masses[tri.a].position;
-    const glm::vec3 &p1 = masses[tri.b].position;
-    const glm::vec3 &p2 = masses[tri.c].position;
-
-    glm::vec3 edge1 = p1 - p0;
-    glm::vec3 edge2 = p2 - p0;
-
-    glm::vec3 normal = glm::cross(edge1, edge2);
-    float len = glm::length(normal);
-
-    if (len > 0.0001f)
-        return normal / len;
-
-    return glm::vec3(0.0f, 0.0f, 1.0f);
-}
-
-bool Cloth::isPointInTriangle(const glm::vec3 &p, const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c) const
-{
-    glm::vec3 v0 = c - a;
-    glm::vec3 v1 = b - a;
-    glm::vec3 v2 = p - a;
-
-    float dot00 = glm::dot(v0, v0);
-    float dot01 = glm::dot(v0, v1);
-    float dot02 = glm::dot(v0, v2);
-    float dot11 = glm::dot(v1, v1);
-    float dot12 = glm::dot(v1, v2);
-
-    float invDenom = 1.0f / (dot00 * dot11 - dot01 * dot01);
-    float u = (dot11 * dot02 - dot01 * dot12) * invDenom;
-    float v = (dot00 * dot12 - dot01 * dot02) * invDenom;
-
-    return (u >= -0.001f) && (v >= -0.001f) && (u + v <= 1.001f);
 }
 
 bool Cloth::areSpringMidpointsConnected(int springA, int springB) const
@@ -61,17 +25,20 @@ void Cloth::initCloth()
 {
     masses.clear();
     springs.clear();
-    triangles.clear();
+    massIndexMap.clear();
 
     masses.reserve(resX * resY);
     springs.reserve((resX - 1) * resY + resX * (resY - 1) + (resX - 1) * (resY - 1));
+    massIndexMap.resize(resX * resY);
 
-    const float massValue = 1.0f;
+    const float massValue = 0.5f;
 
-    float structuralStiff = 80.0f;
-    float structuralDamping = 0.5f;
-    float shearStiff = 60.0f;
-    float shearDamping = 0.3f;
+    float structuralStiff = 100.0f;
+    float structuralDamping = 1.5f;
+    float shearStiff = 200.0f;
+    float shearDamping = 1.0f;
+    float bendingStiff = 100.0f;
+    float bendingDamping = 0.8f;
 
     for (int y = 0; y < resY; y++)
     {
@@ -86,9 +53,13 @@ void Cloth::initCloth()
 
             bool isFixed = (y == 0);
             masses.emplace_back(glm::vec3(xpos, ypos, zpos), massValue, isFixed, glm::vec2(u, v));
+            
+            int gridIdx = y * resX + x;
+            massIndexMap[gridIdx] = gridIdx;
         }
     }
 
+    // Structural horizontal springs
     for (int y = 0; y < resY; y++)
     {
         for (int x = 0; x < resX - 1; x++)
@@ -101,6 +72,7 @@ void Cloth::initCloth()
         }
     }
 
+    // Structural vertical springs
     for (int y = 0; y < resY - 1; y++)
     {
         for (int x = 0; x < resX; x++)
@@ -113,6 +85,7 @@ void Cloth::initCloth()
         }
     }
 
+    // Shear diagonal springs
     for (int y = 0; y < resY - 1; y++)
     {
         for (int x = 0; x < resX - 1; x++)
@@ -131,21 +104,67 @@ void Cloth::initCloth()
         }
     }
 
-    for (int y = 0; y < resY - 1; y++)
+    // Bending horizontal springs
+    for(int y = 0; y < resY; y++)  
     {
-        for (int x = 0; x < resX - 1; x++)
+        for(int x = 0; x < resX - 2; x++)
         {
-            int topLeft = y * resX + x;
-            int topRight = topLeft + 1;
-            int bottomLeft = (y + 1) * resX + x;
-            int bottomRight = bottomLeft + 1;
-
-            triangles.push_back({topLeft, bottomLeft, topRight});
-            triangles.push_back({topRight, bottomLeft, bottomRight});
+            int idx1 = y * resX + x;
+            int idx2 = y * resX + (x + 2);
+            float length = glm::distance(masses[idx1].position, masses[idx2].position);
+            glm::vec3 mp = midpoint(masses[idx1].position, masses[idx2].position);
+            springs.emplace_back(idx1, idx2, length, mp, bendingStiff, bendingDamping);
         }
     }
 
+    // Bending vertical springs
+    for(int y = 0; y < resY - 2; y++)
+    {
+        for(int x = 0; x < resX; x++)
+        {
+            int idx1 = y * resX + x;
+            int idx2 = (y + 2) * resX + x;
+            float length = glm::distance(masses[idx1].position, masses[idx2].position);
+            glm::vec3 mp = midpoint(masses[idx1].position, masses[idx2].position);
+            springs.emplace_back(idx1, idx2, length, mp, bendingStiff, bendingDamping);
+        }
+    }
+
+    // Load texture
+    if (textureID == 0)
+    {
+        glGenTextures(1, &textureID);
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        
+        int width, height, nrChannels;
+        unsigned char *data = stbi_load("../img/textures/cloth.png", &width, &height, &nrChannels, 0);
+        
+        if (data)
+        {
+            GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
+            glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+            glGenerateMipmap(GL_TEXTURE_2D);
+            std::cout << "Loaded texture: " << width << "x" << height << std::endl;
+        }
+        else
+        {
+            std::cout << "Failed to load texture, using checkerboard pattern\n";
+            unsigned char checkerboard[64];
+            for(int i = 0; i < 64; i++)
+                checkerboard[i] = ((i/8 + (i%8)) % 2) ? 255 : 0;
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 8, 8, 0, GL_RED, GL_UNSIGNED_BYTE, checkerboard);
+        }
+        
+        stbi_image_free(data);
+    }
+
     rebuildGraphicsData();
+    rebuildTextureData();
 
     if (VAO_masses == 0)
     {
@@ -171,20 +190,28 @@ void Cloth::initCloth()
         glEnableVertexAttribArray(0);
     }
 
-    if (VAO_cloth == 0)
+    if (VAO_texture == 0)
     {
-        glGenVertexArrays(1, &VAO_cloth);
-        glGenBuffers(1, &VBO_cloth);
-        glGenBuffers(1, &EBO_cloth);
+        glGenVertexArrays(1, &VAO_texture);
+        glGenBuffers(1, &VBO_texture);
+        glGenBuffers(1, &EBO_texture);
 
-        glBindVertexArray(VAO_cloth);
-        glBindBuffer(GL_ARRAY_BUFFER, VBO_cloth);
-        glBufferData(GL_ARRAY_BUFFER, massesVertices.size() * sizeof(float), massesVertices.data(), GL_DYNAMIC_DRAW);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO_cloth);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_DYNAMIC_DRAW);
-
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+        glBindVertexArray(VAO_texture);
+        
+        glBindBuffer(GL_ARRAY_BUFFER, VBO_texture);
+        glBufferData(GL_ARRAY_BUFFER, textureVertices.size() * sizeof(float), textureVertices.data(), GL_DYNAMIC_DRAW);
+        
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO_texture);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, textureIndices.size() * sizeof(unsigned int), textureIndices.data(), GL_DYNAMIC_DRAW);
+        
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
+        
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+        
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+        glEnableVertexAttribArray(2);
     }
 }
 
@@ -206,7 +233,7 @@ Cloth::Cloth(float width, float height, int resX, int resY, float floorY)
 {
     VAO_masses = 0, VBO_masses = 0;
     VAO_lines = 0, VBO_lines = 0;
-    VAO_cloth = 0, VBO_cloth = 0, EBO_cloth = 0;
+    VAO_texture = 0, VBO_texture = 0, EBO_texture = 0;
 
     initCloth();
 }
@@ -238,52 +265,191 @@ void Cloth::rebuildGraphicsData()
         glBindBuffer(GL_ARRAY_BUFFER, VBO_lines);
         glBufferData(GL_ARRAY_BUFFER, lineVertices.size() * sizeof(float), lineVertices.data(), GL_DYNAMIC_DRAW);
     }
+}
 
-    indices.clear();
-    for (const auto &tri : triangles)
+void Cloth::calculateNormals()
+{
+    for (auto &mass : masses)
     {
-        indices.push_back(tri.a);
-        indices.push_back(tri.b);
-        indices.push_back(tri.c);
+        mass.normal = glm::vec3(0.0f);
     }
+    
+    for (int y = 0; y < resY - 1; y++)
+    {
+        for (int x = 0; x < resX - 1; x++)
+        {
+            int gridIdx0 = y * resX + x;
+            int gridIdx1 = y * resX + (x + 1);
+            int gridIdx2 = (y + 1) * resX + x;
+            int gridIdx3 = (y + 1) * resX + (x + 1);
+            
+            if (gridIdx0 >= massIndexMap.size() || gridIdx1 >= massIndexMap.size() ||
+                gridIdx2 >= massIndexMap.size() || gridIdx3 >= massIndexMap.size())
+                continue;
+            
+            int idx0 = massIndexMap[gridIdx0];
+            int idx1 = massIndexMap[gridIdx1];
+            int idx2 = massIndexMap[gridIdx2];
+            int idx3 = massIndexMap[gridIdx3];
+            
+            if (idx0 < 0 || idx1 < 0 || idx2 < 0 || idx3 < 0)
+                continue;
+            
+            glm::vec3 v0 = masses[idx0].position;
+            glm::vec3 v1 = masses[idx1].position;
+            glm::vec3 v2 = masses[idx2].position;
+            
+            glm::vec3 edge1 = v1 - v0;
+            glm::vec3 edge2 = v2 - v0;
+            glm::vec3 normal1 = glm::normalize(glm::cross(edge1, edge2));
+            
+            masses[idx0].normal += normal1;
+            masses[idx1].normal += normal1;
+            masses[idx2].normal += normal1;
+            
+            v0 = masses[idx1].position;
+            v1 = masses[idx3].position;
+            v2 = masses[idx2].position;
+            
+            edge1 = v1 - v0;
+            edge2 = v2 - v0;
+            glm::vec3 normal2 = glm::normalize(glm::cross(edge1, edge2));
+            
+            masses[idx1].normal += normal2;
+            masses[idx3].normal += normal2;
+            masses[idx2].normal += normal2;
+        }
+    }
+    
+    for (auto &mass : masses)
+    {
+        if (glm::length(mass.normal) > 0.001f)
+        {
+            mass.normal = glm::normalize(mass.normal);
+        }
+        else
+        {
+            mass.normal = glm::vec3(0.0f, 0.0f, 1.0f);
+        }
+    }
+}
 
-    std::vector<float> texCoords;
-    texCoords.reserve(masses.size() * 2);
+void Cloth::rebuildTextureData()
+{
+    textureVertices.clear();
+    textureIndices.clear();
+
+    if (masses.empty())
+        return;
+    
+    calculateNormals();
+
+    textureVertices.reserve(masses.size() * 8);
     for (const auto &mass : masses)
     {
-        texCoords.push_back(mass.uv.x);
-        texCoords.push_back(mass.uv.y);
+        textureVertices.push_back(mass.position.x);
+        textureVertices.push_back(mass.position.y);
+        textureVertices.push_back(mass.position.z);
+        textureVertices.push_back(mass.normal.x);
+        textureVertices.push_back(mass.normal.y);
+        textureVertices.push_back(mass.normal.z);
+        textureVertices.push_back(mass.texCoord.x);
+        textureVertices.push_back(mass.texCoord.y);
     }
 
-    if (VAO_cloth == 0)
+    std::set<std::pair<int, int>> springConnections;
+    for (const auto &spring : springs)
     {
-        glGenVertexArrays(1, &VAO_cloth);
-        glGenBuffers(1, &VBO_cloth);
-        glGenBuffers(1, &VBO_uv);
-        glGenBuffers(1, &EBO_cloth);
+        if (spring.a >= masses.size() || spring.b >= masses.size())
+            continue;
+            
+        int minIdx = std::min(spring.a, spring.b);
+        int maxIdx = std::max(spring.a, spring.b);
+        springConnections.insert({minIdx, maxIdx});
     }
 
-    glBindVertexArray(VAO_cloth);
+    auto hasSpring = [&](int a, int b) {
+        if (a < 0 || b < 0 || a >= masses.size() || b >= masses.size())
+            return false;
+        int minIdx = std::min(a, b);
+        int maxIdx = std::max(a, b);
+        return springConnections.count({minIdx, maxIdx}) > 0;
+    };
 
-    glBindBuffer(GL_ARRAY_BUFFER, VBO_cloth);
-    glBufferData(GL_ARRAY_BUFFER, massesVertices.size() * sizeof(float), massesVertices.data(), GL_DYNAMIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
-    glEnableVertexAttribArray(0);
+    textureIndices.reserve((resX - 1) * (resY - 1) * 6);
+    for (int y = 0; y < resY - 1; y++)
+    {
+        for (int x = 0; x < resX - 1; x++)
+        {
+            int gridIdx0 = y * resX + x;
+            int gridIdx1 = y * resX + (x + 1);
+            int gridIdx2 = (y + 1) * resX + x;
+            int gridIdx3 = (y + 1) * resX + (x + 1);
 
-    glBindBuffer(GL_ARRAY_BUFFER, VBO_uv);
-    glBufferData(GL_ARRAY_BUFFER, texCoords.size() * sizeof(float), texCoords.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
-    glEnableVertexAttribArray(1);
+            if (gridIdx0 >= massIndexMap.size() || gridIdx1 >= massIndexMap.size() ||
+                gridIdx2 >= massIndexMap.size() || gridIdx3 >= massIndexMap.size())
+                continue;
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO_cloth);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_DYNAMIC_DRAW);
+            int idx0 = massIndexMap[gridIdx0];
+            int idx1 = massIndexMap[gridIdx1];
+            int idx2 = massIndexMap[gridIdx2];
+            int idx3 = massIndexMap[gridIdx3];
+
+            if (idx0 < 0 || idx1 < 0 || idx2 < 0 || idx3 < 0)
+                continue;
+
+            int edgeCount1 = 0;
+            if (hasSpring(idx0, idx1)) edgeCount1++;
+            if (hasSpring(idx1, idx2)) edgeCount1++;
+            if (hasSpring(idx0, idx2)) edgeCount1++;
+            
+            if (edgeCount1 >= 2)
+            {
+                textureIndices.push_back(idx0);
+                textureIndices.push_back(idx1);
+                textureIndices.push_back(idx2);
+            }
+
+            int edgeCount2 = 0;
+            if (hasSpring(idx1, idx3)) edgeCount2++;
+            if (hasSpring(idx3, idx2)) edgeCount2++;
+            if (hasSpring(idx1, idx2)) edgeCount2++;
+            
+            if (edgeCount2 >= 2)
+            {
+                textureIndices.push_back(idx1);
+                textureIndices.push_back(idx3);
+                textureIndices.push_back(idx2);
+            }
+        }
+    }
+
+    if (VAO_texture != 0)
+    {
+        glBindBuffer(GL_ARRAY_BUFFER, VBO_texture);
+        glBufferData(GL_ARRAY_BUFFER, textureVertices.size() * sizeof(float), textureVertices.data(), GL_DYNAMIC_DRAW);
+        
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO_texture);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, textureIndices.size() * sizeof(unsigned int), textureIndices.data(), GL_DYNAMIC_DRAW);
+    }
 }
 
 void Cloth::draw(Shader &shader)
 {
+    if (textureVisible)
+    {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        shader.setInt("useTexture", 1);
+        
+        glBindVertexArray(VAO_texture);
+        glDrawElements(GL_TRIANGLES, textureIndices.size(), GL_UNSIGNED_INT, 0);
+        
+        shader.setInt("useTexture", 0);
+    }
+
     if (springVisible)
     {
-        shader.setBool("useTexture", false);
         shader.setVec3("color", glm::vec3(0.0f, 0.0f, 1.0f));
         glBindVertexArray(VAO_lines);
         glDrawArrays(GL_LINES, 0, lineVertices.size() / 3);
@@ -291,7 +457,6 @@ void Cloth::draw(Shader &shader)
 
     if (massVisible)
     {
-        shader.setBool("useTexture", false);
         shader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
         glPointSize(5.0f);
         glBindVertexArray(VAO_masses);
@@ -305,27 +470,151 @@ void Cloth::draw(Shader &shader)
         }
     }
 
-    if (texture != nullptr)
-    {
-        shader.setBool("useTexture", true);
-        texture->bind(0);
-        shader.setInt("clothTexture", 0);
-    }
-    else
-    {
-        shader.setBool("useTexture", false);
-        shader.setVec3("color", glm::vec3(0.8f, 0.8f, 0.8f));
-    }
-
-    glBindVertexArray(VAO_cloth);
-    glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
-
     glBindVertexArray(0);
 }
 
-void Cloth::setTexture(Texture *tex)
+void Cloth::removeIsolatedMasses()
 {
-    texture = tex;
+    if (masses.empty())
+        return;
+
+    std::vector<int> springCount(masses.size(), 0);
+    
+    for (const auto &spring : springs)
+    {
+        if (spring.a < masses.size() && spring.b < masses.size())
+        {
+            springCount[spring.a]++;
+            springCount[spring.b]++;
+        }
+    }
+
+    std::vector<bool> toRemove(masses.size(), false);
+    int removeCount = 0;
+    
+    for (int i = 0; i < masses.size(); i++)
+    {
+        if (springCount[i] == 0 && !masses[i].fixed)
+        {
+            toRemove[i] = true;
+            removeCount++;
+        }
+    }
+
+    std::vector<std::vector<int>> adjacency(masses.size());
+    for (const auto &spring : springs)
+    {
+        if (spring.a < masses.size() && spring.b < masses.size())
+        {
+            adjacency[spring.a].push_back(spring.b);
+            adjacency[spring.b].push_back(spring.a);
+        }
+    }
+
+    std::vector<bool> connectedToFixed(masses.size(), false);
+    std::queue<int> queue;
+    
+    for (int i = 0; i < masses.size(); i++)
+    {
+        if (masses[i].fixed)
+        {
+            connectedToFixed[i] = true;
+            queue.push(i);
+        }
+    }
+
+    while (!queue.empty())
+    {
+        int current = queue.front();
+        queue.pop();
+
+        for (int neighbor : adjacency[current])
+        {
+            if (neighbor < masses.size() && !connectedToFixed[neighbor])
+            {
+                connectedToFixed[neighbor] = true;
+                queue.push(neighbor);
+            }
+        }
+    }
+
+    for (int i = 0; i < masses.size(); i++)
+    {
+        if (!connectedToFixed[i] && !masses[i].fixed && !toRemove[i])
+        {
+            toRemove[i] = true;
+            removeCount++;
+        }
+    }
+
+    if (removeCount == 0)
+        return;
+
+    std::cout << "Removing " << removeCount << " isolated/floating masses\n";
+
+    std::vector<int> newIndex(masses.size(), -1);
+    int currentNew = 0;
+    
+    for (int i = 0; i < masses.size(); i++)
+    {
+        if (!toRemove[i])
+        {
+            newIndex[i] = currentNew++;
+        }
+    }
+
+    std::vector<Mass> newMasses;
+    newMasses.reserve(masses.size() - removeCount);
+    
+    for (int i = 0; i < masses.size(); i++)
+    {
+        if (!toRemove[i])
+        {
+            newMasses.push_back(masses[i]);
+        }
+    }
+
+    std::vector<Spring> newSprings;
+    newSprings.reserve(springs.size());
+    
+    for (auto &spring : springs)
+    {
+        if (spring.a < masses.size() && spring.b < masses.size() && 
+            !toRemove[spring.a] && !toRemove[spring.b])
+        {
+            spring.a = newIndex[spring.a];
+            spring.b = newIndex[spring.b];
+            newSprings.push_back(spring);
+        }
+    }
+
+    masses = std::move(newMasses);
+    springs = std::move(newSprings);
+
+    for (int gridIdx = 0; gridIdx < massIndexMap.size(); gridIdx++)
+    {
+        int oldMassIdx = massIndexMap[gridIdx];
+        if (oldMassIdx >= 0 && oldMassIdx < toRemove.size() && !toRemove[oldMassIdx])
+        {
+            massIndexMap[gridIdx] = newIndex[oldMassIdx];
+        }
+        else
+        {
+            massIndexMap[gridIdx] = -1;
+        }
+    }
+
+    if (selectedMassIndex != -1)
+    {
+        if (selectedMassIndex >= toRemove.size() || toRemove[selectedMassIndex])
+        {
+            selectedMassIndex = -1;
+        }
+        else
+        {
+            selectedMassIndex = newIndex[selectedMassIndex];
+        }
+    }
 }
 
 void Cloth::update(float dt)
@@ -336,8 +625,7 @@ void Cloth::update(float dt)
             mass.applyForce(glm::vec3(0.0f, gravity, 0.0f));
         mass.update(dt);
     }
-
-    for (int iter = 0; iter < 3; ++iter)
+    for (int iter = 0; iter < 5; ++iter)
     {
         for (auto &spring : springs)
         {
@@ -347,9 +635,9 @@ void Cloth::update(float dt)
             glm::vec3 delta = massB.position - massA.position;
             float currentLength = glm::length(delta);
 
-            if (currentLength > 0.0f)
+            if (currentLength > 0.0001f)
             {
-                float maxStretchRatio = 1.5f;
+                float maxStretchRatio = 1.2f;
                 float maxLength = spring.restLength * maxStretchRatio;
 
                 if (currentLength > maxLength)
@@ -367,9 +655,11 @@ void Cloth::update(float dt)
                 else
                 {
                     float difference = currentLength - spring.restLength;
-                    glm::vec3 correction = (delta / currentLength) * difference * 0.5f;
+                    glm::vec3 direction = delta / currentLength;
+                    glm::vec3 correction = direction * difference * 0.5f;
 
-                    float correctionFactor = 0.1f * (spring.stiffness / 100.0f);
+                    float correctionFactor = 0.15f * (spring.stiffness / 100.0f);
+
                     if (!massA.fixed)
                         massA.position += correction * correctionFactor;
                     if (!massB.fixed)
@@ -377,7 +667,6 @@ void Cloth::update(float dt)
                 }
             }
         }
-
     }
 
     for (auto &mass : masses)
@@ -390,7 +679,15 @@ void Cloth::update(float dt)
         }
     }
 
+    static int frameCounter = 0;
+    if (++frameCounter >= 30)
+    {
+        // removeIsolatedMasses();
+        frameCounter = 0;
+    }
+
     rebuildGraphicsData();
+    rebuildTextureData();
 
     glBindBuffer(GL_ARRAY_BUFFER, VBO_masses);
     glBufferSubData(GL_ARRAY_BUFFER, 0, massesVertices.size() * sizeof(float), massesVertices.data());
@@ -400,12 +697,21 @@ void Cloth::update(float dt)
         glBindBuffer(GL_ARRAY_BUFFER, VBO_lines);
         glBufferSubData(GL_ARRAY_BUFFER, 0, lineVertices.size() * sizeof(float), lineVertices.data());
     }
+    
+    if (VAO_texture != 0)
+    {
+        glBindBuffer(GL_ARRAY_BUFFER, VBO_texture);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, textureVertices.size() * sizeof(float), textureVertices.data());
+    }
 }
 
 void Mass::update(float dt)
 {
-    // verlet method
     glm::vec3 velocity = position - prevPosition;
+    
+    const float damping = 0.99f;
+    velocity *= damping;
+    
     prevPosition = position;
     position += velocity + acceleration * dt * dt;
     acceleration = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -427,14 +733,12 @@ int Cloth::pickMassPoint(const Ray &ray)
         const Mass &mass = masses[i];
 
         glm::vec3 toMass = mass.position - ray.Origin();
-
         float projection = glm::dot(toMass, ray.Direction());
 
         if (projection < 0)
             continue;
 
         glm::vec3 closestPoint = ray.Origin() + ray.Direction() * projection;
-
         float distance = glm::length(mass.position - closestPoint);
 
         if (distance < PICK_DISTANCE_THRESHOLD && distance < closestDistance)
@@ -468,6 +772,7 @@ void Cloth::checkTearingAroundPoint(int massIndex)
 {
     const float tearThreshold = 20.0f;
 
+    bool springsRemoved = false;
     for (auto it = springs.begin(); it != springs.end();)
     {
         if (it->a == massIndex || it->b == massIndex)
@@ -482,10 +787,16 @@ void Cloth::checkTearingAroundPoint(int massIndex)
             if (stretchRatio > tearThreshold)
             {
                 it = springs.erase(it);
+                springsRemoved = true;
                 continue;
             }
         }
         ++it;
+    }
+
+    if (springsRemoved)
+    {
+        rebuildTextureData();
     }
 }
 
@@ -565,7 +876,6 @@ void Cloth::cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos)
     }
 
     std::vector<int> springsToCut;
-
     float cutThreshold = 0.08f;
 
     for (int i = 0; i < springs.size(); ++i)
@@ -623,60 +933,9 @@ void Cloth::cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos)
             springs.erase(springs.begin() + index);
         }
 
-        rebuildTrianglesFromSprings();
         rebuildGraphicsData();
+        rebuildTextureData();
 
         std::cout << "Cut " << springsToCut.size() << " springs\n";
     }
-}
-
-void Cloth::rebuildTrianglesFromSprings()
-{
-    triangles.clear();
-
-    auto springExists = [this](int a, int b) -> bool {
-        for (const auto &s : springs)
-        {
-            if ((s.a == a && s.b == b) || (s.a == b && s.b == a))
-                return true;
-        }
-        return false;
-    };
-
-    for (int y = 0; y < resY - 1; y++)
-    {
-        for (int x = 0; x < resX - 1; x++)
-        {
-            int topLeft = y * resX + x;
-            int topRight = topLeft + 1;
-            int bottomLeft = (y + 1) * resX + x;
-            int bottomRight = bottomLeft + 1;
-
-            bool hasEdge1 = springExists(topLeft, bottomLeft);
-            bool hasEdge2 = springExists(bottomLeft, topRight);
-            bool hasEdge3 = springExists(topRight, topLeft);
-
-            if (hasEdge1 && hasEdge2 && hasEdge3)
-            {
-                triangles.push_back({topLeft, bottomLeft, topRight});
-            }
-
-            bool hasEdge4 = springExists(topRight, bottomLeft);
-            bool hasEdge5 = springExists(bottomLeft, bottomRight);
-            bool hasEdge6 = springExists(bottomRight, topRight);
-
-            if (hasEdge4 && hasEdge5 && hasEdge6)
-            {
-                triangles.push_back({topRight, bottomLeft, bottomRight});
-            }
-        }
-    }
-}
-
-void Cloth::removeIsolatedMasses()
-{
-}
-
-void Cloth::satisfy()
-{
 }

@@ -6,13 +6,13 @@
 - [x] - Ukrywanie/ujawnianie spreżyn
 - [ ] - Siła wiatru
 - [ ] - Podstawowe GUI do edycji parametrów początkowych
-- [ ] - Tekstura/obraz tkaniny
+- [x] - Tekstura/obraz tkaniny
 - [ ] - Zmiana rozmiaru tkaniny
-- [ ] - Skybox
-- [ ] - Oswietlenie
-- [ ] - Cienie
+- [x] - Skybox
+- [x] - Oswietlenie
+- [x] - Cienie
 - [ ] - Analiza parametrow wybranych punktów
 - [ ] - Generowanie danych pomiarowych
 ## Fixes to do
-- [ ] - Trzeba zrobic jakis inny pomysl rozrywania tej tkaniny bo za bardzo laguje
-- [ ] - Trzeba zrobic fix przy rozdzielaniu pojedynczej masy
+- [x] - Trzeba zrobic jakis inny pomysl rozrywania tej tkaniny bo za bardzo laguje
+- [x] - Trzeba zrobic fix przy rozdzielaniu pojedynczej masy

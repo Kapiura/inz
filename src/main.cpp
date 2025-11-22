@@ -12,12 +12,12 @@
 #include "Camera.hpp"
 #include "Cloth.hpp"
 #include "Shader.hpp"
-#include "Texture.hpp"
 #include "Ray.hpp"
+#include "Skybox.hpp"
 
 // GLOBAL STATE
-const unsigned int SCR_WIDTH = 1600;
-const unsigned int SCR_HEIGHT = 800;
+unsigned int SCR_WIDTH = 1600;
+unsigned int SCR_HEIGHT = 800;
 
 Camera camera(glm::vec3(0.0f, 2.0f, 10.0f));
 float lastX = SCR_WIDTH / 2.0f;
@@ -36,6 +36,19 @@ float interactionDistance = 10.0f;
 std::vector<glm::vec3> cuttingPath;
 const int MAX_PATH_POINTS = 100;
 
+glm::vec3 lightPos(5.0f, 10.0f, 5.0f);
+glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
+
+const unsigned int SHADOW_WIDTH = 2048, SHADOW_HEIGHT = 2048;
+unsigned int depthMapFBO;
+unsigned int depthMap;
+
+struct AppData
+{
+    Cloth* cloth;
+    Skybox* skybox;
+};
+
 // FORWARD DECLARATIONS
 void framebufferSizeCallback(GLFWwindow *window, int width, int height);
 void mouseCallback(GLFWwindow *window, double xposIn, double yposIn);
@@ -46,6 +59,8 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 void processInput(GLFWwindow *window);
 void updateGrabbedMass(GLFWwindow *window);
 void renderCuttingPath(Shader &shader);
+void renderScene(Shader &shader, Cloth &cloth);
+void renderFloor(Shader &shader);
 
 Ray createRayFromMouse(GLFWwindow *window);
 glm::vec3 getWorldPosFromRay(const Ray &ray, float distance);
@@ -54,6 +69,9 @@ bool rayPlaneIntersection(const Ray &ray, const glm::vec3 &planePoint, const glm
 
 GLFWwindow *initializeWindow();
 void setupCallbacks(GLFWwindow *window);
+void setupShadowMap();
+
+unsigned int floorVAO = 0, floorVBO = 0;
 
 // MAIN
 int main()
@@ -62,74 +80,167 @@ int main()
     if (!window)
         return -1;
 
-    Shader shader("../shaders/shader.vs", "../shaders/shader.fs");
-    shader.use();
 
+    Shader shader("../shaders/shader.vs", "../shaders/shader.fs");
+    Shader skyboxShader("../shaders/skybox.vs", "../shaders/skybox.fs");
+    Shader shadowShader("../shaders/shadow.vs", "../shaders/shadow.fs");
+    
+    setupShadowMap();
+    
+    std::vector<std::string> faces = {
+        "../img/skybox/right.jpg",
+        "../img/skybox/left.jpg",
+        "../img/skybox/top.jpg",
+        "../img/skybox/bottom.jpg",
+        "../img/skybox/front.jpg",
+        "../img/skybox/back.jpg"
+    };
+    Skybox skybox(faces);
+    
     Cloth cloth(5.0f, 5.0f, 50, 50, -10.0f);
 
-    try
-    {
-        Texture *clothTexture = new Texture("../img/textures/awesomeface.png");
-        cloth.setTexture(clothTexture);
-        std::cout << "Texture loaded successfully\n";
-    }
-    catch (...)
-    {
-        std::cout << "No texture found, using solid color\n";
-    }
+    AppData appData;
+    appData.cloth = &cloth;
+    appData.skybox = &skybox;
 
-    glfwSetWindowUserPointer(window, &cloth);
-
+    glfwSetWindowUserPointer(window, &appData);
     setupCallbacks(window);
 
     camera.setLockCamera(true);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    glm::vec4 clearColor = glm::vec4(0.45f, 0.55f, 0.60f, 1.00f);
+    float floorVertices[] = {
+        // positions          // normals           // texture coords
+        -50.0f, -10.0f, -50.0f,  0.0f, 1.0f, 0.0f,  0.0f, 0.0f,
+         50.0f, -10.0f, -50.0f,  0.0f, 1.0f, 0.0f,  10.0f, 0.0f,
+         50.0f, -10.0f,  50.0f,  0.0f, 1.0f, 0.0f,  10.0f, 10.0f,
+         50.0f, -10.0f,  50.0f,  0.0f, 1.0f, 0.0f,  10.0f, 10.0f,
+        -50.0f, -10.0f,  50.0f,  0.0f, 1.0f, 0.0f,  0.0f, 10.0f,
+        -50.0f, -10.0f, -50.0f,  0.0f, 1.0f, 0.0f,  0.0f, 0.0f
+    };
+    
+    glGenVertexArrays(1, &floorVAO);
+    glGenBuffers(1, &floorVBO);
+    glBindVertexArray(floorVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, floorVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(floorVertices), floorVertices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
 
-    // Main render loop
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
 
-        // Update timing
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
         processInput(window);
-
-        // Update simulation
         cloth.update(deltaTime);
         updateGrabbedMass(window);
 
-        // Render
-        glClearColor(clearColor.x * clearColor.w, clearColor.y * clearColor.w, clearColor.z * clearColor.w,
-                     clearColor.w);
+        glm::mat4 lightProjection = glm::ortho(-15.0f, 15.0f, -15.0f, 15.0f, 1.0f, 30.0f);
+        glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 lightSpaceMatrix = lightProjection * lightView;
+
+        shadowShader.use();
+        shadowShader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        renderScene(shadowShader, cloth);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         shader.use();
-
-        glm::mat4 projection =
-            glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), 
+                                                (float)SCR_WIDTH / (float)SCR_HEIGHT, 
+                                                0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
         glm::mat4 model = glm::mat4(1.0f);
 
         shader.setMat4("projection", projection);
         shader.setMat4("view", view);
         shader.setMat4("model", model);
+        shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+        
+        shader.setVec3("lightPos", lightPos);
+        shader.setVec3("viewPos", camera.Position);
+        shader.setVec3("lightColor", lightColor);
+        shader.setInt("useShadows", 1);
+        
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, depthMap);
+        shader.setInt("shadowMap", 1);
+        
+        glActiveTexture(GL_TEXTURE0);
+        shader.setInt("clothTexture", 0);
 
-        cloth.draw(shader);
+        renderScene(shader, cloth);
         renderCuttingPath(shader);
+
+        skyboxShader.use();
+        skybox.draw(skyboxShader, view, projection);
 
         glfwSwapBuffers(window);
     }
+
+    glDeleteVertexArrays(1, &floorVAO);
+    glDeleteBuffers(1, &floorVBO);
+    glDeleteFramebuffers(1, &depthMapFBO);
+    glDeleteTextures(1, &depthMap);
 
     glfwTerminate();
     return 0;
 }
 
-// INITIALIZATION
+void setupShadowMap()
+{
+    glGenFramebuffers(1, &depthMapFBO);
+    
+    glGenTextures(1, &depthMap);
+    glBindTexture(GL_TEXTURE_2D, depthMap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 
+                 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void renderScene(Shader &shader, Cloth &cloth)
+{
+    glm::mat4 model = glm::mat4(1.0f);
+    shader.setMat4("model", model);
+    
+    renderFloor(shader);
+    cloth.draw(shader);
+}
+
+void renderFloor(Shader &shader)
+{
+    shader.setVec3("color", glm::vec3(0.5f, 0.5f, 0.5f));
+    shader.setInt("useTexture", 0);
+    glBindVertexArray(floorVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
 GLFWwindow *initializeWindow()
 {
     if (!glfwInit())
@@ -175,56 +286,50 @@ void setupCallbacks(GLFWwindow *window)
     glfwSetKeyCallback(window, keyCallback);
 }
 
-// INPUT CALLBACKS
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
     if (action != GLFW_PRESS)
         return;
 
-    Cloth *cloth = static_cast<Cloth *>(glfwGetWindowUserPointer(window));
+    AppData *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
+    Cloth *cloth = appData->cloth;
+    Skybox *skybox = appData->skybox;
 
     switch (key)
     {
     case GLFW_KEY_ESCAPE:
         glfwSetWindowShouldClose(window, true);
         break;
-
     case GLFW_KEY_R:
         cloth->reset();
         std::cout << "Cloth reset" << std::endl;
         break;
-
     case GLFW_KEY_M:
         cloth->changeMassesVisible();
         std::cout << "Toggled mass visibility" << std::endl;
         break;
-
     case GLFW_KEY_N:
         cloth->changeSpringsVisible();
         std::cout << "Toggled spring visibility" << std::endl;
         break;
-
-    case GLFW_KEY_C: {
+    case GLFW_KEY_B:
+        cloth->changeTextureVisible();
+        std::cout << "Toggled texture visibility" << std::endl;
+        break;
+    case GLFW_KEY_V:
+        skybox->toggleVisibility();
+        std::cout << "Toggled skybox visibility: " << (skybox->isVisible() ? "ON" : "OFF") << std::endl;
+        break;
+    case GLFW_KEY_C:
         camera.unLockCamera(window);
         firstMouse = true;
-
-        if (!camera.getCameraBlocked())
+        if (massSelected)
         {
-            std::cout << "Camera UNLOCKED - can interact with cloth" << std::endl;
-        }
-        else
-        {
-            std::cout << "Camera LOCKED - free look mode" << std::endl;
-
-            if (massSelected)
-            {
-                cloth->releaseMassPoint(selectedMassIndex);
-                massSelected = false;
-                selectedMassIndex = -1;
-            }
+            cloth->releaseMassPoint(selectedMassIndex);
+            massSelected = false;
+            selectedMassIndex = -1;
         }
         break;
-    }
     }
 }
 
@@ -233,15 +338,13 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
     if (button != GLFW_MOUSE_BUTTON_LEFT)
         return;
 
-    Cloth *cloth = static_cast<Cloth *>(glfwGetWindowUserPointer(window));
+    AppData *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
+    Cloth *cloth = appData->cloth;
 
     if (action == GLFW_PRESS)
     {
         if (camera.getCameraBlocked())
-        {
-            std::cout << "Camera locked - cannot interact with cloth" << std::endl;
             return;
-        }
 
         Ray ray = createRayFromMouse(window);
         mousePressed = true;
@@ -255,9 +358,6 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
             interactionDistance = glm::length(mass.position - camera.Position);
             lastMouseWorldPos = getWorldPosFromRay(ray, interactionDistance);
             cuttingPath.clear();
-
-            std::cout << "Grabbed mass point #" << selectedMassIndex << " at distance: " << interactionDistance
-                      << std::endl;
         }
         else
         {
@@ -268,31 +368,18 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
             {
                 cuttingPath.clear();
                 cuttingPath.push_back(lastMouseWorldPos);
-                std::cout << "Started cutting at: (" << lastMouseWorldPos.x << ", " << lastMouseWorldPos.y << ", "
-                          << lastMouseWorldPos.z << ")" << std::endl;
-            }
-            else
-            {
-                interactionDistance = 10.0f;
-                lastMouseWorldPos = getWorldPosFromRay(ray, interactionDistance);
-                cuttingPath.clear();
-                cuttingPath.push_back(lastMouseWorldPos);
-                std::cout << "Started cutting (fallback)" << std::endl;
             }
         }
     }
     else if (action == GLFW_RELEASE)
     {
         mousePressed = false;
-
         if (massSelected)
         {
             cloth->releaseMassPoint(selectedMassIndex);
             massSelected = false;
             selectedMassIndex = -1;
-            std::cout << "Released mass point" << std::endl;
         }
-
         cuttingPath.clear();
     }
 }
@@ -329,10 +416,11 @@ void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
 
 void framebufferSizeCallback(GLFWwindow *window, int width, int height)
 {
+    SCR_WIDTH = width;
+    SCR_HEIGHT = height;
     glViewport(0, 0, width, height);
 }
 
-// INPUT PROCESSING
 void processInput(GLFWwindow *window)
 {
     if (camera.getCameraBlocked())
@@ -352,14 +440,14 @@ void processInput(GLFWwindow *window)
     }
 }
 
-// INTERACTION UPDATE
 void updateGrabbedMass(GLFWwindow *window)
 {
     if (camera.getCameraBlocked() || !mousePressed)
         return;
 
     Ray ray = createRayFromMouse(window);
-    Cloth *cloth = static_cast<Cloth *>(glfwGetWindowUserPointer(window));
+    AppData *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
+    Cloth *cloth = appData->cloth;
 
     if (massSelected)
     {
@@ -380,21 +468,16 @@ void updateGrabbedMass(GLFWwindow *window)
 
             cuttingPath.push_back(lastMouseWorldPos);
             if (cuttingPath.size() > MAX_PATH_POINTS)
-            {
                 cuttingPath.erase(cuttingPath.begin());
-            }
         }
     }
 }
 
-// RENDERING
 void renderCuttingPath(Shader &shader)
 {
     if (cuttingPath.empty() || cuttingPath.size() < 2)
         return;
 
-    shader.setBool("useTexture", false);
-    shader.setVec3("color", glm::vec3(1.0f, 1.0f, 0.0f));
     glLineWidth(3.0f);
 
     std::vector<float> pathVertices;
@@ -424,7 +507,6 @@ void renderCuttingPath(Shader &shader)
     glLineWidth(1.0f);
 }
 
-// RAY UTILITIES
 Ray createRayFromMouse(GLFWwindow *window)
 {
     double xpos, ypos;
