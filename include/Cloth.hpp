@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Shader.hpp"
+#include "Force.hpp"
 
 class AABB;
 class Ray;
@@ -95,6 +96,9 @@ class Cloth
     {
         return height;
     }
+    
+    ForceManager& getForceManager() { return forceManager; }
+    const ForceManager& getForceManager() const { return forceManager; }
 
   private:
     int resX, resY;
@@ -113,8 +117,8 @@ class Cloth
     std::vector<Spring> springs;
     std::vector<int> massIndexMap;
 
-    bool massVisible = true;
-    bool springVisible = true;
+    bool massVisible = false;
+    bool springVisible = false;
     bool textureVisible = true;
 
     std::vector<float> massesVertices;
@@ -127,8 +131,10 @@ class Cloth
     unsigned int VAO_texture = 0, VBO_texture = 0, EBO_texture = 0;
     unsigned int textureID = 0;
 
-    const float gravity = -9.81f;
     float floorY = 0.0f;
+    
+    ForceManager forceManager;
+    float simulationTime = 0.0f;
 
     int selectedMassIndex = -1;
     glm::vec3 lastMouseWorldPos;

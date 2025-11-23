@@ -4,8 +4,8 @@
 ## TO DO
 - [x] - Ukrywanie/ujawnianie mas
 - [x] - Ukrywanie/ujawnianie spreżyn
-- [ ] - Siła wiatru
-- [ ] - Podstawowe GUI do edycji parametrów początkowych
+- [x] - Siła wiatru
+- [x] - Podstawowe GUI do edycji parametrów początkowych
 - [x] - Tekstura/obraz tkaniny
 - [ ] - Zmiana rozmiaru tkaniny
 - [x] - Skybox

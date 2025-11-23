@@ -27,6 +27,12 @@ void Cloth::initCloth()
     springs.clear();
     massIndexMap.clear();
 
+    forceManager.clear();
+    forceManager.addForce<GravityForce>(-9.81f);
+    forceManager.addForce<WindForce>(glm::vec3(1.0f, 0.0f, 0.0f), 5.0f);
+
+    simulationTime = 0.0f;
+
     masses.reserve(resX * resY);
     springs.reserve((resX - 1) * resY + resX * (resY - 1) + (resX - 1) * (resY - 1));
     massIndexMap.resize(resX * resY);
@@ -617,14 +623,23 @@ void Cloth::removeIsolatedMasses()
     }
 }
 
+
 void Cloth::update(float dt)
 {
+    simulationTime += dt;
+    
+    forceManager.update(dt);
+    
     for (auto &mass : masses)
     {
         if (!mass.fixed)
-            mass.applyForce(glm::vec3(0.0f, gravity, 0.0f));
+        {
+            glm::vec3 totalForce = forceManager.calculateTotalForce(mass, simulationTime);
+            mass.applyForce(std::move(totalForce));
+        }
         mass.update(dt);
     }
+    
     for (int iter = 0; iter < 5; ++iter)
     {
         for (auto &spring : springs)
@@ -644,7 +659,6 @@ void Cloth::update(float dt)
                 {
                     glm::vec3 direction = delta / currentLength;
                     float overStretch = currentLength - maxLength;
-
                     float correction = overStretch * 0.5f;
 
                     if (!massA.fixed)
@@ -657,7 +671,6 @@ void Cloth::update(float dt)
                     float difference = currentLength - spring.restLength;
                     glm::vec3 direction = delta / currentLength;
                     glm::vec3 correction = direction * difference * 0.5f;
-
                     float correctionFactor = 0.15f * (spring.stiffness / 100.0f);
 
                     if (!massA.fixed)

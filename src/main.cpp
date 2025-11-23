@@ -3,6 +3,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
 
 #include <cmath>
 #include <iostream>
@@ -14,6 +17,7 @@
 #include "Shader.hpp"
 #include "Ray.hpp"
 #include "Skybox.hpp"
+#include "GUI.hpp"
 
 // GLOBAL STATE
 unsigned int SCR_WIDTH = 1600;
@@ -47,6 +51,7 @@ struct AppData
 {
     Cloth* cloth;
     Skybox* skybox;
+    ClothGUI* gui;
 };
 
 // FORWARD DECLARATIONS
@@ -55,6 +60,7 @@ void mouseCallback(GLFWwindow *window, double xposIn, double yposIn);
 void scrollCallback(GLFWwindow *window, double xoffset, double yoffset);
 void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods);
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
+void charCallback(GLFWwindow* window, unsigned int c);
 
 void processInput(GLFWwindow *window);
 void updateGrabbedMass(GLFWwindow *window);
@@ -80,7 +86,6 @@ int main()
     if (!window)
         return -1;
 
-
     Shader shader("../shaders/shader.vs", "../shaders/shader.fs");
     Shader skyboxShader("../shaders/skybox.vs", "../shaders/skybox.fs");
     Shader shadowShader("../shaders/shadow.vs", "../shaders/shadow.fs");
@@ -99,15 +104,20 @@ int main()
     
     Cloth cloth(5.0f, 5.0f, 50, 50, -10.0f);
 
+    ClothGUI gui;
+    gui.init(window, "#version 330");
+
     AppData appData;
     appData.cloth = &cloth;
     appData.skybox = &skybox;
+    appData.gui = &gui;
 
     glfwSetWindowUserPointer(window, &appData);
     setupCallbacks(window);
+    glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 
-    camera.setLockCamera(true);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    camera.setLockCamera(false);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
     float floorVertices[] = {
         // positions          // normals           // texture coords
@@ -142,6 +152,8 @@ int main()
         processInput(window);
         cloth.update(deltaTime);
         updateGrabbedMass(window);
+
+        gui.beginFrame();
 
         glm::mat4 lightProjection = glm::ortho(-15.0f, 15.0f, -15.0f, 15.0f, 1.0f, 30.0f);
         glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -190,8 +202,13 @@ int main()
         skyboxShader.use();
         skybox.draw(skyboxShader, view, projection);
 
+        gui.drawClothControls(&cloth, &camera);
+        gui.render();
+
         glfwSwapBuffers(window);
     }
+
+    gui.shutdown();
 
     glDeleteVertexArrays(1, &floorVAO);
     glDeleteBuffers(1, &floorVBO);
@@ -284,42 +301,57 @@ void setupCallbacks(GLFWwindow *window)
     glfwSetScrollCallback(window, scrollCallback);
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetKeyCallback(window, keyCallback);
+    glfwSetCharCallback(window, charCallback);
 }
+
 
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
+    ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
+    
     if (action != GLFW_PRESS)
+        return;
+
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureKeyboard && key != GLFW_KEY_ESCAPE && key != GLFW_KEY_C)
         return;
 
     AppData *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
     Cloth *cloth = appData->cloth;
     Skybox *skybox = appData->skybox;
+    ForceManager& forceManager = cloth->getForceManager();
 
     switch (key)
     {
     case GLFW_KEY_ESCAPE:
         glfwSetWindowShouldClose(window, true);
         break;
+        
     case GLFW_KEY_R:
         cloth->reset();
         std::cout << "Cloth reset" << std::endl;
         break;
+        
     case GLFW_KEY_M:
         cloth->changeMassesVisible();
         std::cout << "Toggled mass visibility" << std::endl;
         break;
+        
     case GLFW_KEY_N:
         cloth->changeSpringsVisible();
         std::cout << "Toggled spring visibility" << std::endl;
         break;
+        
     case GLFW_KEY_B:
         cloth->changeTextureVisible();
         std::cout << "Toggled texture visibility" << std::endl;
         break;
+        
     case GLFW_KEY_V:
         skybox->toggleVisibility();
         std::cout << "Toggled skybox visibility: " << (skybox->isVisible() ? "ON" : "OFF") << std::endl;
         break;
+        
     case GLFW_KEY_C:
         camera.unLockCamera(window);
         firstMouse = true;
@@ -329,12 +361,209 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
             massSelected = false;
             selectedMassIndex = -1;
         }
+        
+        if (camera.getCameraBlocked())
+        {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        }
+        else
+        {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
+        break;
+    
+    case GLFW_KEY_W:
+        if (mods & GLFW_MOD_SHIFT)
+        {
+            if (WindForce* wind = forceManager.getForce<WindForce>())
+            {
+                wind->setEnabled(!wind->isEnabled());
+                std::cout << "Wind: " << (wind->isEnabled() ? "ON" : "OFF") << std::endl;
+            }
+        }
+        break;
+        
+    case GLFW_KEY_1:
+        if (WindForce* wind = forceManager.getForce<WindForce>())
+        {
+            wind->setDirection(glm::vec3(1.0f, 0.0f, 0.0f));
+            std::cout << "Wind direction: RIGHT" << std::endl;
+        }
+        break;
+        
+    case GLFW_KEY_2: 
+        if (WindForce* wind = forceManager.getForce<WindForce>())
+        {
+            wind->setDirection(glm::vec3(-1.0f, 0.0f, 0.0f));
+            std::cout << "Wind direction: LEFT" << std::endl;
+        }
+        break;
+        
+    case GLFW_KEY_3:
+        if (WindForce* wind = forceManager.getForce<WindForce>())
+        {
+            wind->setDirection(glm::vec3(0.0f, 0.0f, 1.0f));
+            std::cout << "Wind direction: FORWARD" << std::endl;
+        }
+        break;
+        
+    case GLFW_KEY_4:
+        if (WindForce* wind = forceManager.getForce<WindForce>())
+        {
+            wind->setDirection(glm::vec3(0.0f, 0.0f, -1.0f));
+            std::cout << "Wind direction: BACKWARD" << std::endl;
+        }
+        break;
+        
+    case GLFW_KEY_5:
+        if (WindForce* wind = forceManager.getForce<WindForce>())
+        {
+            wind->setDirection(glm::vec3(0.0f, 1.0f, 0.0f));
+            std::cout << "Wind direction: UP" << std::endl;
+        }
+        break;
+        
+    case GLFW_KEY_EQUAL:
+        if (WindForce* wind = forceManager.getForce<WindForce>())
+        {
+            float newStrength = glm::min(wind->getStrength() + 1.0f, 20.0f);
+            wind->setStrength(newStrength);
+            std::cout << "Wind strength: " << newStrength << std::endl;
+        }
+        break;
+        
+    case GLFW_KEY_MINUS: 
+        if (WindForce* wind = forceManager.getForce<WindForce>())
+        {
+            float newStrength = glm::max(wind->getStrength() - 1.0f, 0.0f);
+            wind->setStrength(newStrength);
+            std::cout << "Wind strength: " << newStrength << std::endl;
+        }
+        break;
+    
+    case GLFW_KEY_G: 
+        if (GravityForce* gravity = forceManager.getForce<GravityForce>())
+        {
+            gravity->setEnabled(!gravity->isEnabled());
+            std::cout << "Gravity: " << (gravity->isEnabled() ? "ON" : "OFF") << std::endl;
+        }
+        break;
+        
+    case GLFW_KEY_E: 
+        {
+            if (forceManager.getForce<RepulsionForce>() == nullptr)
+            {
+                RepulsionForce* explosion = forceManager.addForce<RepulsionForce>(
+                    glm::vec3(0.0f, 2.5f, 0.0f), 
+                    50.0f, 
+                    5.0f
+                );
+                explosion->setEnabled(true);
+                std::cout << "Explosion force ADDED" << std::endl;
+            }
+            else
+            {
+                auto explosions = forceManager.getForces<RepulsionForce>();
+                for (auto* exp : explosions)
+                {
+                    exp->setEnabled(!exp->isEnabled());
+                    std::cout << "Explosion force: " << (exp->isEnabled() ? "ON" : "OFF") << std::endl;
+                }
+            }
+        }
+        break;
+        
+    case GLFW_KEY_T:
+        {
+            if (forceManager.getForce<AttractionForce>() == nullptr)
+            {
+                AttractionForce* attraction = forceManager.addForce<AttractionForce>(
+                    glm::vec3(0.0f, 0.0f, 0.0f), 
+                    10.0f 
+                );
+                attraction->setEnabled(true);
+                std::cout << "Attraction force ADDED" << std::endl;
+            }
+            else
+            {
+                auto attractions = forceManager.getForces<AttractionForce>();
+                for (auto* att : attractions)
+                {
+                    att->setEnabled(!att->isEnabled());
+                    std::cout << "Attraction force: " << (att->isEnabled() ? "ON" : "OFF") << std::endl;
+                }
+            }
+        }
+        break;
+        
+    case GLFW_KEY_O:
+        {
+            if (forceManager.getForce<OscillatingForce>() == nullptr)
+            {
+                OscillatingForce* oscillating = forceManager.addForce<OscillatingForce>(
+                    glm::vec3(1.0f, 0.0f, 0.0f), 
+                    3.0f,
+                    2.0f 
+                );
+                oscillating->setEnabled(true);
+                std::cout << "Oscillating force ADDED" << std::endl;
+            }
+            else
+            {
+                auto oscillations = forceManager.getForces<OscillatingForce>();
+                for (auto* osc : oscillations)
+                {
+                    osc->setEnabled(!osc->isEnabled());
+                    std::cout << "Oscillating force: " << (osc->isEnabled() ? "ON" : "OFF") << std::endl;
+                }
+            }
+        }
+        break;
+
+    case GLFW_KEY_H:
+        std::cout << "\n========== CONTROLS ==========\n";
+        std::cout << "\n--- Basic ---\n";
+        std::cout << "R - Reset cloth\n";
+        std::cout << "M - Toggle mass points\n";
+        std::cout << "N - Toggle springs\n";
+        std::cout << "B - Toggle texture\n";
+        std::cout << "V - Toggle skybox\n";
+        std::cout << "C - Toggle camera lock\n";
+        std::cout << "ESC - Exit\n";
+        
+        std::cout << "\n--- Wind ---\n";
+        std::cout << "Shift+W - Toggle wind\n";
+        std::cout << "1/2/3/4/5 - Wind direction\n";
+        std::cout << "+/- - Wind strength\n";
+        
+        std::cout << "\n--- Forces ---\n";
+        std::cout << "G - Toggle gravity\n";
+        std::cout << "E - Toggle explosion\n";
+        std::cout << "T - Toggle attraction\n";
+        std::cout << "O - Toggle oscillation\n";
+        
+        std::cout << "\n--- Camera ---\n";
+        std::cout << "W/A/S/D - Move\n";
+        std::cout << "Space/Shift - Up/Down\n";
+        std::cout << "Mouse - Look around\n";
+        std::cout << "Scroll - Zoom\n";
+        
+        std::cout << "\n--- Info ---\n";
+        std::cout << "H - Show this help\n";
+        std::cout << "==============================\n\n";
+        
         break;
     }
 }
 
 void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
 {
+    ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
+    
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse)
+        return;
+    
     if (button != GLFW_MOUSE_BUTTON_LEFT)
         return;
 
@@ -386,6 +615,12 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
 
 void mouseCallback(GLFWwindow *window, double xposIn, double yposIn)
 {
+    ImGui_ImplGlfw_CursorPosCallback(window, xposIn, yposIn);
+    
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse)
+        return;
+    
     if (!camera.getCameraBlocked())
         return;
 
@@ -411,6 +646,12 @@ void mouseCallback(GLFWwindow *window, double xposIn, double yposIn)
 
 void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
 {
+    ImGui_ImplGlfw_ScrollCallback(window, xoffset, yoffset);
+    
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse)
+        return;
+    
     camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
@@ -544,4 +785,9 @@ bool rayPlaneIntersection(const Ray &ray, const glm::vec3 &planePoint, const glm
 
     hitPoint = ray.At(t);
     return true;
+}
+
+void charCallback(GLFWwindow* window, unsigned int c)
+{
+    ImGui_ImplGlfw_CharCallback(window, c);
 }
