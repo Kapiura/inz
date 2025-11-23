@@ -7,12 +7,15 @@
 - [x] - Siła wiatru
 - [x] - Podstawowe GUI do edycji parametrów początkowych
 - [x] - Tekstura/obraz tkaniny
-- [ ] - Zmiana rozmiaru tkaniny
 - [x] - Skybox
 - [x] - Oswietlenie
 - [x] - Cienie
 - [ ] - Analiza parametrow wybranych punktów
 - [ ] - Generowanie danych pomiarowych
+- [ ] - Zmiana rozmiaru tkaniny
+- [ ] - Mozliwosc przemieszcania zrodlem swiatla
+- [ ] - Może poprawić ciecie tkainy bo dalej pod pewnymi katami/pewnej dlugosci nie przecina badz robi to dosc upo
+- [ ] - Możliwość dodawania wlasnych plikow jako tekstura
 ## Fixes to do
 - [x] - Trzeba zrobic jakis inny pomysl rozrywania tej tkaniny bo za bardzo laguje
 - [x] - Trzeba zrobic fix przy rozdzielaniu pojedynczej masy
