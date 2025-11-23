@@ -5,6 +5,7 @@
 #include <imgui_impl_opengl3.h>
 #include "Cloth.hpp"
 #include "Camera.hpp"
+#include <glm/glm.hpp>
 
 class ClothGUI
 {
@@ -47,24 +48,12 @@ public:
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
     
-    void drawClothControls(Cloth* cloth, Camera* camera)
+    void drawClothControls(Cloth* cloth, Camera* camera, glm::vec3* lightPos)
     {
+        if (camera->getCameraBlocked())
+            return;
+        
         ImGui::Begin("Cloth Simulation Controls", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::Text("Mouse Over GUI: %s", io.WantCaptureMouse ? "YES" : "NO");
-        ImGui::Text("Mouse Pos: %.1f, %.1f", io.MousePos.x, io.MousePos.y);
-        
-        static int clickCount = 0;
-        if (ImGui::Button("TEST CLICK ME!"))
-        {
-            clickCount++;
-            std::cout << "Button clicked! Count: " << clickCount << std::endl;
-        }
-        ImGui::SameLine();
-        ImGui::Text("Clicks: %d", clickCount);
-        
-        ImGui::Separator();
         
         if (ImGui::CollapsingHeader("Simulation Info", ImGuiTreeNodeFlags_DefaultOpen))
         {
@@ -75,6 +64,153 @@ public:
             if (camera->getCameraBlocked())
             {
                 ImGui::TextColored(ImVec4(1,1,0,1), "Press C to unlock camera for GUI!");
+            }
+        }
+
+       if (ImGui::CollapsingHeader("Lighting", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Text("Light Source Position");
+            ImGui::SliderFloat("Light X", &lightPos->x, -20.0f, 20.0f, "%.1f");
+            ImGui::SliderFloat("Light Y", &lightPos->y, -5.0f, 20.0f, "%.1f");
+            ImGui::SliderFloat("Light Z", &lightPos->z, -20.0f, 20.0f, "%.1f");
+            
+            ImGui::Separator();
+            
+            if (ImGui::Button("Top Center"))
+            {
+                *lightPos = glm::vec3(0.0f, 15.0f, 0.0f);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Front"))
+            {
+                *lightPos = glm::vec3(0.0f, 5.0f, 10.0f);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Back"))
+            {
+                *lightPos = glm::vec3(0.0f, 5.0f, -10.0f);
+            }
+            
+            if (ImGui::Button("Left"))
+            {
+                *lightPos = glm::vec3(-10.0f, 5.0f, 0.0f);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Right"))
+            {
+                *lightPos = glm::vec3(10.0f, 5.0f, 0.0f);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Default"))
+            {
+                *lightPos = glm::vec3(5.0f, 10.0f, 5.0f);
+            }
+            
+            ImGui::Separator();
+            
+            ImGui::Text("Artistic Presets:");
+            if (ImGui::Button("Dramatic (Low Side)"))
+            {
+                *lightPos = glm::vec3(8.0f, 1.0f, 5.0f);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Sunset"))
+            {
+                *lightPos = glm::vec3(-15.0f, 3.0f, -10.0f);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Overhead"))
+            {
+                *lightPos = glm::vec3(0.0f, 18.0f, 2.0f);
+            }
+            
+            ImGui::Separator();
+            ImGui::Text("Current Position: (%.1f, %.1f, %.1f)", 
+                       lightPos->x, lightPos->y, lightPos->z);
+        }
+
+        if (ImGui::CollapsingHeader("Cloth Dimensions", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            static float newWidth = cloth->getClothWidth();
+            static float newHeight = cloth->getClothHeight();
+            static int newResX = 50;
+            static int newResY = 50;
+            
+            ImGui::Text("Current Size: %.1fx%.1f", cloth->getClothWidth(), cloth->getClothHeight());
+            ImGui::Separator();
+            
+            ImGui::SliderFloat("Width", &newWidth, 1.0f, 20.0f, "%.1f");
+            ImGui::SliderFloat("Height", &newHeight, 1.0f, 20.0f, "%.1f");
+            
+            ImGui::Separator();
+            ImGui::Text("Resolution (Number of Masses)");
+            ImGui::SliderInt("Horizontal (X)", &newResX, 5, 100);
+            ImGui::SliderInt("Vertical (Y)", &newResY, 5, 100);
+            
+            ImGui::Text("Total masses: %d", newResX * newResY);
+            
+            if (newResX * newResY > 5000)
+            {
+                ImGui::TextColored(ImVec4(1, 0.5, 0, 1), "Warning: High mass count may affect performance!");
+            }
+            
+            ImGui::Separator();
+            
+            if (ImGui::Button("Small (25x25)"))
+            {
+                newWidth = 3.0f;
+                newHeight = 3.0f;
+                newResX = 25;
+                newResY = 25;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Medium (50x50)"))
+            {
+                newWidth = 5.0f;
+                newHeight = 5.0f;
+                newResX = 50;
+                newResY = 50;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Large (75x75)"))
+            {
+                newWidth = 8.0f;
+                newHeight = 8.0f;
+                newResX = 75;
+                newResY = 75;
+            }
+            
+            if (ImGui::Button("Fine Detail (100x100)"))
+            {
+                newWidth = 5.0f;
+                newHeight = 5.0f;
+                newResX = 100;
+                newResY = 100;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Flag (80x40)"))
+            {
+                newWidth = 8.0f;
+                newHeight = 4.0f;
+                newResX = 80;
+                newResY = 40;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Curtain (30x80)"))
+            {
+                newWidth = 3.0f;
+                newHeight = 8.0f;
+                newResX = 30;
+                newResY = 80;
+            }
+            
+            ImGui::Separator();
+            
+            if (ImGui::Button("Apply New Size", ImVec2(-1, 40)))
+            {
+                cloth->resize(newWidth, newHeight, newResX, newResY);
+                std::cout << "Cloth resized to " << newWidth << "x" << newHeight 
+                          << " with " << newResX << "x" << newResY << " masses" << std::endl;
             }
         }
         
@@ -112,7 +248,7 @@ public:
                 ImGui::Separator();
                 ImGui::Text("Wind");
                 bool enabled = wind->isEnabled();
-                if (ImGui::Checkbox("Enable Wind (Shift+W)", &enabled))
+                if (ImGui::Checkbox("Enable Wind (P)", &enabled))
                     wind->setEnabled(enabled);
                 
                 float strength = wind->getStrength();
@@ -134,66 +270,6 @@ public:
                 if (ImGui::Button("Back (4)")) wind->setDirection(glm::vec3(0, 0, -1));
                 ImGui::SameLine();
                 if (ImGui::Button("Up (5)")) wind->setDirection(glm::vec3(0, 1, 0));
-            }
-            
-            ImGui::Separator();
-            ImGui::Text("Explosion Force");
-            auto explosions = fm.getForces<RepulsionForce>();
-            if (!explosions.empty())
-            {
-                RepulsionForce* exp = explosions[0];
-                bool enabled = exp->isEnabled();
-                if (ImGui::Checkbox("Enable Explosion (E)", &enabled))
-                    exp->setEnabled(enabled);
-                
-                glm::vec3 center = exp->getCenter();
-                if (ImGui::SliderFloat3("Explosion Center", &center.x, -10.0f, 10.0f))
-                    exp->setCenter(center);
-                
-                float strength = exp->getStrength();
-                if (ImGui::SliderFloat("Explosion Strength", &strength, 0.0f, 100.0f))
-                    exp->setStrength(strength);
-                
-                float radius = exp->getRadius();
-                if (ImGui::SliderFloat("Explosion Radius", &radius, 1.0f, 15.0f))
-                    exp->setRadius(radius);
-            }
-            else
-            {
-                if (ImGui::Button("Add Explosion Force (E)"))
-                {
-                    RepulsionForce* explosion = fm.addForce<RepulsionForce>(
-                        glm::vec3(0.0f, 2.5f, 0.0f), 50.0f, 5.0f);
-                    explosion->setEnabled(true);
-                }
-            }
-            
-            ImGui::Separator();
-            ImGui::Text("Attraction Force");
-            auto attractions = fm.getForces<AttractionForce>();
-            if (!attractions.empty())
-            {
-                AttractionForce* att = attractions[0];
-                bool enabled = att->isEnabled();
-                if (ImGui::Checkbox("Enable Attraction (T)", &enabled))
-                    att->setEnabled(enabled);
-                
-                glm::vec3 center = att->getCenter();
-                if (ImGui::SliderFloat3("Attraction Center", &center.x, -10.0f, 10.0f))
-                    att->setCenter(center);
-                
-                float strength = att->getStrength();
-                if (ImGui::SliderFloat("Attraction Strength", &strength, 0.0f, 50.0f))
-                    att->setStrength(strength);
-            }
-            else
-            {
-                if (ImGui::Button("Add Attraction Force (T)"))
-                {
-                    AttractionForce* attraction = fm.addForce<AttractionForce>(
-                        glm::vec3(0.0f, 0.0f, 0.0f), 10.0f);
-                    attraction->setEnabled(true);
-                }
             }
             
             ImGui::Separator();
@@ -234,37 +310,27 @@ public:
         
         if (ImGui::CollapsingHeader("Actions"))
         {
-            if (ImGui::Button("Reset Cloth (R)"))
+            if (ImGui::Button("Reset Cloth (R)", ImVec2(200, 30)))
             {
                 cloth->reset();
             }
             
-            if (ImGui::Button("Toggle Camera Lock (C)"))
+            if (ImGui::Button("Lock Camera for FPS (C)", ImVec2(200, 30)))
             {
                 GLFWwindow* win = glfwGetCurrentContext();
-                if (camera->getCameraBlocked())
-                {
-                    camera->unLockCamera(win);
-                    glfwSetInputMode(win, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-                }
-                else
-                {
-                    camera->setLockCamera(true);
-                    glfwSetInputMode(win, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                }
+                camera->setLockCamera(true);
+                glfwSetInputMode(win, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
             }
-            
-            ImGui::Text("Camera: %s", camera->getCameraBlocked() ? "LOCKED (FPS)" : "UNLOCKED (GUI)");
         }
         
         if (ImGui::CollapsingHeader("Help"))
         {
-            ImGui::TextWrapped("Left Click: Grab/Cut cloth");
-            ImGui::TextWrapped("W/A/S/D: Move camera");
-            ImGui::TextWrapped("Space/Shift: Up/Down");
-            ImGui::TextWrapped("Mouse: Look around");
-            ImGui::TextWrapped("Scroll: Zoom");
-            ImGui::TextWrapped("H: Show full controls in console");
+            ImGui::TextWrapped("C - Toggle camera (FPS/GUI mode)");
+            ImGui::TextWrapped("Left Click - Grab/Cut cloth (GUI mode)");
+            ImGui::TextWrapped("W/A/S/D - Move camera (FPS mode)");
+            ImGui::TextWrapped("Mouse - Look around (FPS mode)");
+            ImGui::TextWrapped("Scroll - Zoom");
+            ImGui::TextWrapped("H - Show full controls in console");
         }
         
         ImGui::End();

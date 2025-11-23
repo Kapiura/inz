@@ -952,3 +952,16 @@ void Cloth::cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos)
         std::cout << "Cut " << springsToCut.size() << " springs\n";
     }
 }
+
+void Cloth::resize(float newWidth, float newHeight, int newResX, int newResY)
+{
+    width = newWidth;
+    height = newHeight;
+    resX = newResX;
+    resY = newResY;
+    
+    initCloth();
+    
+    std::cout << "Cloth resized to " << width << "x" << height 
+              << " with resolution " << resX << "x" << resY << std::endl;
+}

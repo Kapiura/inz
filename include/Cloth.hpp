@@ -66,6 +66,7 @@ class Cloth
     void calculateNormals();
 
     void removeIsolatedMasses();
+    void resize(float newWidth, float newHeight, int newResX, int newResY);
 
     Mass &getMass(int index)
     {

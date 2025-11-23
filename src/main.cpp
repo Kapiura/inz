@@ -19,6 +19,18 @@
 #include "Skybox.hpp"
 #include "GUI.hpp"
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#ifndef M_PI_2
+#define M_PI_2 1.57079632679489661923
+#endif
+
+unsigned int sphereVAO = 0, sphereVBO = 0, sphereEBO = 0;
+std::vector<float> sphereVertices;
+std::vector<unsigned int> sphereIndices;
+
 // GLOBAL STATE
 unsigned int SCR_WIDTH = 1600;
 unsigned int SCR_HEIGHT = 800;
@@ -61,6 +73,8 @@ void scrollCallback(GLFWwindow *window, double xoffset, double yoffset);
 void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods);
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
 void charCallback(GLFWwindow* window, unsigned int c);
+void initSpheres();
+void renderForceVisualizations(Shader& shader, Cloth& cloth, const glm::vec3& lightPos);
 
 void processInput(GLFWwindow *window);
 void updateGrabbedMass(GLFWwindow *window);
@@ -141,6 +155,8 @@ int main()
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
     glEnableVertexAttribArray(2);
 
+    initSpheres();
+
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
@@ -197,12 +213,13 @@ int main()
         shader.setInt("clothTexture", 0);
 
         renderScene(shader, cloth);
+        renderForceVisualizations(shader, cloth, lightPos);
         renderCuttingPath(shader);
 
         skyboxShader.use();
         skybox.draw(skyboxShader, view, projection);
 
-        gui.drawClothControls(&cloth, &camera);
+        gui.drawClothControls(&cloth, &camera, &lightPos);
         gui.render();
 
         glfwSwapBuffers(window);
@@ -214,6 +231,10 @@ int main()
     glDeleteBuffers(1, &floorVBO);
     glDeleteFramebuffers(1, &depthMapFBO);
     glDeleteTextures(1, &depthMap);
+    
+    glDeleteVertexArrays(1, &sphereVAO);
+    glDeleteBuffers(1, &sphereVBO);
+    glDeleteBuffers(1, &sphereEBO);
 
     glfwTerminate();
     return 0;
@@ -372,14 +393,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         }
         break;
     
-    case GLFW_KEY_W:
-        if (mods & GLFW_MOD_SHIFT)
+    case GLFW_KEY_P:
+        if (WindForce* wind = forceManager.getForce<WindForce>())
         {
-            if (WindForce* wind = forceManager.getForce<WindForce>())
-            {
-                wind->setEnabled(!wind->isEnabled());
-                std::cout << "Wind: " << (wind->isEnabled() ? "ON" : "OFF") << std::endl;
-            }
+            wind->setEnabled(!wind->isEnabled());
+            std::cout << "Wind: " << (wind->isEnabled() ? "ON" : "OFF") << std::endl;
         }
         break;
         
@@ -449,53 +467,6 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         }
         break;
         
-    case GLFW_KEY_E: 
-        {
-            if (forceManager.getForce<RepulsionForce>() == nullptr)
-            {
-                RepulsionForce* explosion = forceManager.addForce<RepulsionForce>(
-                    glm::vec3(0.0f, 2.5f, 0.0f), 
-                    50.0f, 
-                    5.0f
-                );
-                explosion->setEnabled(true);
-                std::cout << "Explosion force ADDED" << std::endl;
-            }
-            else
-            {
-                auto explosions = forceManager.getForces<RepulsionForce>();
-                for (auto* exp : explosions)
-                {
-                    exp->setEnabled(!exp->isEnabled());
-                    std::cout << "Explosion force: " << (exp->isEnabled() ? "ON" : "OFF") << std::endl;
-                }
-            }
-        }
-        break;
-        
-    case GLFW_KEY_T:
-        {
-            if (forceManager.getForce<AttractionForce>() == nullptr)
-            {
-                AttractionForce* attraction = forceManager.addForce<AttractionForce>(
-                    glm::vec3(0.0f, 0.0f, 0.0f), 
-                    10.0f 
-                );
-                attraction->setEnabled(true);
-                std::cout << "Attraction force ADDED" << std::endl;
-            }
-            else
-            {
-                auto attractions = forceManager.getForces<AttractionForce>();
-                for (auto* att : attractions)
-                {
-                    att->setEnabled(!att->isEnabled());
-                    std::cout << "Attraction force: " << (att->isEnabled() ? "ON" : "OFF") << std::endl;
-                }
-            }
-        }
-        break;
-        
     case GLFW_KEY_O:
         {
             if (forceManager.getForce<OscillatingForce>() == nullptr)
@@ -532,14 +503,12 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         std::cout << "ESC - Exit\n";
         
         std::cout << "\n--- Wind ---\n";
-        std::cout << "Shift+W - Toggle wind\n";
+        std::cout << "P - Toggle wind\n";
         std::cout << "1/2/3/4/5 - Wind direction\n";
         std::cout << "+/- - Wind strength\n";
         
         std::cout << "\n--- Forces ---\n";
         std::cout << "G - Toggle gravity\n";
-        std::cout << "E - Toggle explosion\n";
-        std::cout << "T - Toggle attraction\n";
         std::cout << "O - Toggle oscillation\n";
         
         std::cout << "\n--- Camera ---\n";
@@ -705,21 +674,64 @@ void updateGrabbedMass(GLFWwindow *window)
         if (rayPlaneIntersection(ray, planePoint, planeNormal, currentMouseWorldPos))
         {
             cloth->cutSpringsWithRay(ray, lastMouseWorldPos);
+            
+            if (cuttingPath.empty() || 
+                glm::length(currentMouseWorldPos - cuttingPath.back()) > 0.1f)
+            {
+                cuttingPath.push_back(currentMouseWorldPos);
+                
+                if (cuttingPath.size() > MAX_PATH_POINTS)
+                    cuttingPath.erase(cuttingPath.begin());
+            }
+            
             lastMouseWorldPos = currentMouseWorldPos;
-
-            cuttingPath.push_back(lastMouseWorldPos);
-            if (cuttingPath.size() > MAX_PATH_POINTS)
-                cuttingPath.erase(cuttingPath.begin());
         }
     }
 }
 
 void renderCuttingPath(Shader &shader)
 {
-    if (cuttingPath.empty() || cuttingPath.size() < 2)
+    if (cuttingPath.empty())
         return;
 
-    glLineWidth(3.0f);
+    glm::mat4 model = glm::mat4(1.0f);
+    shader.setMat4("model", model);
+    
+    shader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
+    shader.setInt("useTexture", 0);
+    shader.setInt("useShadows", 0);
+
+    if (cuttingPath.size() == 1)
+    {
+        glPointSize(20.0f);
+        
+        std::vector<float> pointVertex = {
+            cuttingPath[0].x,
+            cuttingPath[0].y,
+            cuttingPath[0].z
+        };
+        
+        GLuint pointVAO, pointVBO;
+        glGenVertexArrays(1, &pointVAO);
+        glGenBuffers(1, &pointVBO);
+        
+        glBindVertexArray(pointVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, pointVBO);
+        glBufferData(GL_ARRAY_BUFFER, pointVertex.size() * sizeof(float), 
+                     pointVertex.data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+        glEnableVertexAttribArray(0);
+        
+        glDrawArrays(GL_POINTS, 0, 1);
+        
+        glDeleteBuffers(1, &pointVBO);
+        glDeleteVertexArrays(1, &pointVAO);
+        glPointSize(1.0f);
+        
+        return;
+    }
+
+    glLineWidth(8.0f); 
 
     std::vector<float> pathVertices;
     pathVertices.reserve(cuttingPath.size() * 3);
@@ -737,10 +749,11 @@ void renderCuttingPath(Shader &shader)
 
     glBindVertexArray(pathVAO);
     glBindBuffer(GL_ARRAY_BUFFER, pathVBO);
-    glBufferData(GL_ARRAY_BUFFER, pathVertices.size() * sizeof(float), pathVertices.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, pathVertices.size() * sizeof(float), 
+                 pathVertices.data(), GL_STATIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
-
+    
     glDrawArrays(GL_LINE_STRIP, 0, pathVertices.size() / 3);
 
     glDeleteBuffers(1, &pathVBO);
@@ -790,4 +803,124 @@ bool rayPlaneIntersection(const Ray &ray, const glm::vec3 &planePoint, const glm
 void charCallback(GLFWwindow* window, unsigned int c)
 {
     ImGui_ImplGlfw_CharCallback(window, c);
+}
+
+void generateSphere(float radius, unsigned int rings, unsigned int sectors)
+{
+    sphereVertices.clear();
+    sphereIndices.clear();
+
+    float const R = 1.0f / (float)(rings - 1);
+    float const S = 1.0f / (float)(sectors - 1);
+
+    for(unsigned int r = 0; r < rings; r++)
+    {
+        for(unsigned int s = 0; s < sectors; s++)
+        {
+            float const y = sin(-M_PI_2 + M_PI * r * R);
+            float const x = cos(2 * M_PI * s * S) * sin(M_PI * r * R);
+            float const z = sin(2 * M_PI * s * S) * sin(M_PI * r * R);
+
+            sphereVertices.push_back(x * radius);
+            sphereVertices.push_back(y * radius);
+            sphereVertices.push_back(z * radius);
+        }
+    }
+
+    for(unsigned int r = 0; r < rings - 1; r++)
+    {
+        for(unsigned int s = 0; s < sectors - 1; s++)
+        {
+            sphereIndices.push_back(r * sectors + s);
+            sphereIndices.push_back((r + 1) * sectors + s);
+            sphereIndices.push_back((r + 1) * sectors + (s + 1));
+
+            sphereIndices.push_back(r * sectors + s);
+            sphereIndices.push_back((r + 1) * sectors + (s + 1));
+            sphereIndices.push_back(r * sectors + (s + 1));
+        }
+    }
+}
+
+void initSpheres()
+{
+    generateSphere(0.3f, 20, 20);
+
+    glGenVertexArrays(1, &sphereVAO);
+    glGenBuffers(1, &sphereVBO);
+    glGenBuffers(1, &sphereEBO);
+
+    glBindVertexArray(sphereVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
+    glBufferData(GL_ARRAY_BUFFER, sphereVertices.size() * sizeof(float), 
+                 sphereVertices.data(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sphereIndices.size() * sizeof(unsigned int), 
+                 sphereIndices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glBindVertexArray(0);
+}
+
+void renderSphere(Shader& shader, const glm::vec3& position, const glm::vec3& color, float scale = 1.0f)
+{
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, position);
+    model = glm::scale(model, glm::vec3(scale));
+    
+    shader.setMat4("model", model);
+    shader.setVec3("color", color);
+    shader.setInt("useTexture", 0);
+    
+    glBindVertexArray(sphereVAO);
+    glDrawElements(GL_TRIANGLES, sphereIndices.size(), GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+}
+
+void renderForceVisualizations(Shader& shader, Cloth& cloth, const glm::vec3& lightPos)
+{
+    ForceManager& fm = cloth.getForceManager();
+    
+    renderSphere(shader, lightPos, glm::vec3(1.0f, 1.0f, 0.0f), 0.3f);
+    
+    if (WindForce* wind = fm.getForce<WindForce>())
+    {
+        if (wind->isEnabled())
+        {
+            glm::vec3 windPos = glm::vec3(0.0f, 5.0f, 0.0f);
+            glm::vec3 windDir = wind->getDirection();
+            float strength = wind->getStrength();
+            
+            renderSphere(shader, windPos, glm::vec3(0.3f, 0.7f, 1.0f), 0.3f + strength * 0.02f);
+            
+            std::vector<float> arrowVertices = {
+                windPos.x, windPos.y, windPos.z,
+                windPos.x + windDir.x * 2.0f, 
+                windPos.y + windDir.y * 2.0f, 
+                windPos.z + windDir.z * 2.0f
+            };
+            
+            GLuint arrowVAO, arrowVBO;
+            glGenVertexArrays(1, &arrowVAO);
+            glGenBuffers(1, &arrowVBO);
+            glBindVertexArray(arrowVAO);
+            glBindBuffer(GL_ARRAY_BUFFER, arrowVBO);
+            glBufferData(GL_ARRAY_BUFFER, arrowVertices.size() * sizeof(float), 
+                        arrowVertices.data(), GL_STATIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+            glEnableVertexAttribArray(0);
+            
+            shader.setVec3("color", glm::vec3(0.3f, 0.7f, 1.0f));
+            glLineWidth(3.0f);
+            glDrawArrays(GL_LINES, 0, 2);
+            glLineWidth(1.0f);
+            
+            glDeleteBuffers(1, &arrowVBO);
+            glDeleteVertexArrays(1, &arrowVAO);
+        }
+    }
 }

@@ -12,8 +12,8 @@
 - [x] - Cienie
 - [ ] - Analiza parametrow wybranych punktów
 - [ ] - Generowanie danych pomiarowych
-- [ ] - Zmiana rozmiaru tkaniny
-- [ ] - Mozliwosc przemieszcania zrodlem swiatla
+- [x] - Zmiana rozmiaru tkaniny
+- [x] - Mozliwosc przemieszcania zrodlem swiatla
 - [ ] - Może poprawić ciecie tkainy bo dalej pod pewnymi katami/pewnej dlugosci nie przecina badz robi to dosc upo
 - [ ] - Możliwość dodawania wlasnych plikow jako tekstura
 ## Fixes to do

@@ -40,7 +40,10 @@ class WindForce : public Force
 {
 public:
     WindForce(const glm::vec3& dir, float str) 
-        : direction(glm::normalize(dir)), strength(str) {}
+        : direction(glm::normalize(dir)), strength(str) 
+        {
+            this->enabled = false;
+        }
     
     glm::vec3 calculate(const Mass& mass, float time) const override
     {
@@ -60,48 +63,6 @@ public:
     
 private:
     glm::vec3 direction;
-    float strength;
-};
-
-class RepulsionForce : public Force
-{
-public:
-    RepulsionForce(const glm::vec3& c, float str, float rad)
-        : center(c), strength(str), radius(rad) {}
-    
-    glm::vec3 calculate(const Mass& mass, float time) const override;
-    
-    glm::vec3 getCenter() const { return center; }
-    void setCenter(const glm::vec3& c) { center = c; }
-    
-    float getStrength() const { return strength; }
-    void setStrength(float str) { strength = str; }
-    
-    float getRadius() const { return radius; }
-    void setRadius(float rad) { radius = rad; }
-    
-private:
-    glm::vec3 center;
-    float strength;
-    float radius;
-};
-
-class AttractionForce : public Force
-{
-public:
-    AttractionForce(const glm::vec3& c, float str)
-        : center(c), strength(str) {}
-    
-    glm::vec3 calculate(const Mass& mass, float time) const override;
-    
-    glm::vec3 getCenter() const { return center; }
-    void setCenter(const glm::vec3& c) { center = c; }
-    
-    float getStrength() const { return strength; }
-    void setStrength(float str) { strength = str; }
-    
-private:
-    glm::vec3 center;
     float strength;
 };
 
