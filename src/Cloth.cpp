@@ -37,14 +37,15 @@ void Cloth::initCloth()
     springs.reserve((resX - 1) * resY + resX * (resY - 1) + (resX - 1) * (resY - 1));
     massIndexMap.resize(resX * resY);
 
-    const float massValue = 0.5f;
+        
+    const float massValue = defaultMass;  
 
-    float structuralStiff = 100.0f;
-    float structuralDamping = 1.5f;
-    float shearStiff = 200.0f;
-    float shearDamping = 1.0f;
-    float bendingStiff = 100.0f;
-    float bendingDamping = 0.8f;
+    float structuralStiff = defaultStructuralStiffness;   
+    float structuralDamping = defaultStructuralDamping;   
+    float shearStiff = defaultShearStiffness;             
+    float shearDamping = defaultShearDamping;              
+    float bendingStiff = defaultBendingStiffness;         
+    float bendingDamping = defaultBendingDamping;    
 
     for (int y = 0; y < resY; y++)
     {
@@ -65,7 +66,6 @@ void Cloth::initCloth()
         }
     }
 
-    // Structural horizontal springs
     for (int y = 0; y < resY; y++)
     {
         for (int x = 0; x < resX - 1; x++)
@@ -78,7 +78,6 @@ void Cloth::initCloth()
         }
     }
 
-    // Structural vertical springs
     for (int y = 0; y < resY - 1; y++)
     {
         for (int x = 0; x < resX; x++)
@@ -91,7 +90,6 @@ void Cloth::initCloth()
         }
     }
 
-    // Shear diagonal springs
     for (int y = 0; y < resY - 1; y++)
     {
         for (int x = 0; x < resX - 1; x++)
@@ -110,7 +108,6 @@ void Cloth::initCloth()
         }
     }
 
-    // Bending horizontal springs
     for(int y = 0; y < resY; y++)  
     {
         for(int x = 0; x < resX - 2; x++)
@@ -123,7 +120,6 @@ void Cloth::initCloth()
         }
     }
 
-    // Bending vertical springs
     for(int y = 0; y < resY - 2; y++)
     {
         for(int x = 0; x < resX; x++)
@@ -136,7 +132,6 @@ void Cloth::initCloth()
         }
     }
 
-    // Load texture
     if (textureID == 0)
     {
         glGenTextures(1, &textureID);
@@ -623,7 +618,6 @@ void Cloth::removeIsolatedMasses()
     }
 }
 
-
 void Cloth::update(float dt)
 {
     simulationTime += dt;
@@ -640,7 +634,7 @@ void Cloth::update(float dt)
         mass.update(dt);
     }
     
-    for (int iter = 0; iter < 5; ++iter)
+    for (int iter = 0; iter < solverIterations; ++iter)
     {
         for (auto &spring : springs)
         {
@@ -650,34 +644,32 @@ void Cloth::update(float dt)
             glm::vec3 delta = massB.position - massA.position;
             float currentLength = glm::length(delta);
 
-            if (currentLength > 0.0001f)
+            if (currentLength < 0.0001f)
+                continue;
+
+            float difference = currentLength - spring.restLength;
+            glm::vec3 direction = delta / currentLength;
+            
+            if (currentLength > spring.restLength * maxStretchRatio)
             {
-                float maxStretchRatio = 1.2f;
                 float maxLength = spring.restLength * maxStretchRatio;
+                float overStretch = currentLength - maxLength;
+                float correction = overStretch * 0.5f;
 
-                if (currentLength > maxLength)
-                {
-                    glm::vec3 direction = delta / currentLength;
-                    float overStretch = currentLength - maxLength;
-                    float correction = overStretch * 0.5f;
-
-                    if (!massA.fixed)
-                        massA.position += direction * correction;
-                    if (!massB.fixed)
-                        massB.position -= direction * correction;
-                }
-                else
-                {
-                    float difference = currentLength - spring.restLength;
-                    glm::vec3 direction = delta / currentLength;
-                    glm::vec3 correction = direction * difference * 0.5f;
-                    float correctionFactor = 0.15f * (spring.stiffness / 100.0f);
-
-                    if (!massA.fixed)
-                        massA.position += correction * correctionFactor;
-                    if (!massB.fixed)
-                        massB.position -= correction * correctionFactor;
-                }
+                if (!massA.fixed)
+                    massA.position += direction * correction;
+                if (!massB.fixed)
+                    massB.position -= direction * correction;
+            }
+            else
+            {
+                glm::vec3 correction = direction * difference * 0.5f;
+                float correctionFactorScaled = correctionFactor * (spring.stiffness / 100.0f);
+                
+                if (!massA.fixed)
+                    massA.position += correction * correctionFactorScaled;
+                if (!massB.fixed)
+                    massB.position -= correction * correctionFactorScaled;
             }
         }
     }
@@ -692,10 +684,14 @@ void Cloth::update(float dt)
         }
     }
 
+    if (enableTensionBreaking)
+    {
+        checkSpringTension();
+    }
+
     static int frameCounter = 0;
     if (++frameCounter >= 30)
     {
-        // removeIsolatedMasses();
         frameCounter = 0;
     }
 
@@ -853,106 +849,6 @@ bool Cloth::springIntersectsSegment(const Spring &spring, const glm::vec3 &segme
     return false;
 }
 
-void Cloth::cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos)
-{
-    glm::vec3 planeNormal = glm::vec3(0.0f, 0.0f, 1.0f);
-    glm::vec3 planePoint = glm::vec3(0.0f, 2.5f, 0.0f);
-
-    float denom = glm::dot(planeNormal, ray.Direction());
-    glm::vec3 currentMouseWorldPos;
-
-    if (std::abs(denom) > 0.0001f)
-    {
-        float t = glm::dot(planePoint - ray.Origin(), planeNormal) / denom;
-        if (t >= 0)
-        {
-            currentMouseWorldPos = ray.Origin() + ray.Direction() * t;
-        }
-        else
-        {
-            float distance = glm::length(previousMousePos - ray.Origin());
-            currentMouseWorldPos = ray.Origin() + ray.Direction() * distance;
-        }
-    }
-    else
-    {
-        float distance = glm::length(previousMousePos - ray.Origin());
-        currentMouseWorldPos = ray.Origin() + ray.Direction() * distance;
-    }
-
-    glm::vec3 mouseSegment = currentMouseWorldPos - previousMousePos;
-    float mouseSegmentLength = glm::length(mouseSegment);
-
-    if (mouseSegmentLength < 0.001f)
-    {
-        return;
-    }
-
-    std::vector<int> springsToCut;
-    float cutThreshold = 0.08f;
-
-    for (int i = 0; i < springs.size(); ++i)
-    {
-        const Mass &massA = masses[springs[i].a];
-        const Mass &massB = masses[springs[i].b];
-
-        glm::vec3 springStart = massA.position;
-        glm::vec3 springEnd = massB.position;
-
-        glm::vec3 d1 = currentMouseWorldPos - previousMousePos;
-        glm::vec3 d2 = springEnd - springStart;
-        glm::vec3 r = previousMousePos - springStart;
-
-        float a = glm::dot(d1, d1);
-        float b = glm::dot(d1, d2);
-        float c = glm::dot(d2, d2);
-        float d = glm::dot(d1, r);
-        float e = glm::dot(d2, r);
-
-        float denom = a * c - b * b;
-
-        float s, t;
-
-        if (denom < 0.00001f)
-        {
-            s = 0.0f;
-            t = (b > c ? d / b : e / c);
-        }
-        else
-        {
-            s = (b * e - c * d) / denom;
-            t = (a * e - b * d) / denom;
-        }
-
-        s = glm::clamp(s, 0.0f, 1.0f);
-        t = glm::clamp(t, 0.0f, 1.0f);
-
-        glm::vec3 closestOnMouse = previousMousePos + d1 * s;
-        glm::vec3 closestOnSpring = springStart + d2 * t;
-
-        float dist = glm::length(closestOnMouse - closestOnSpring);
-
-        if (dist <= cutThreshold)
-        {
-            springsToCut.push_back(i);
-        }
-    }
-
-    if (!springsToCut.empty())
-    {
-        for (int i = springsToCut.size() - 1; i >= 0; --i)
-        {
-            int index = springsToCut[i];
-            springs.erase(springs.begin() + index);
-        }
-
-        rebuildGraphicsData();
-        rebuildTextureData();
-
-        std::cout << "Cut " << springsToCut.size() << " springs\n";
-    }
-}
-
 void Cloth::resize(float newWidth, float newHeight, int newResX, int newResY)
 {
     width = newWidth;
@@ -965,3 +861,207 @@ void Cloth::resize(float newWidth, float newHeight, int newResX, int newResY)
     std::cout << "Cloth resized to " << width << "x" << height 
               << " with resolution " << resX << "x" << resY << std::endl;
 }
+
+void Cloth::cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos,
+                               const glm::mat4 &view, const glm::mat4 &projection,
+                               int screenWidth, int screenHeight)
+{
+    glm::mat4 viewProjection = projection * view;
+    
+    std::vector<int> springsToCut;
+    springsToCut.reserve(50);
+    
+    float cutThresholdPixels = 10.0f;
+    
+    auto worldToScreen = [&](const glm::vec3 &worldPos) -> glm::vec3 {
+        glm::vec4 clipSpace = viewProjection * glm::vec4(worldPos, 1.0f);
+        
+        if (std::abs(clipSpace.w) < 0.0001f)
+            return glm::vec3(-9999.0f);
+            
+        float invW = 1.0f / clipSpace.w;
+        glm::vec3 ndc = glm::vec3(clipSpace) * invW;
+        
+        return glm::vec3(
+            (ndc.x + 1.0f) * 0.5f * screenWidth,
+            (1.0f - ndc.y) * 0.5f * screenHeight,
+            clipSpace.w
+        );
+    };
+    
+    float distToPrev = glm::length(previousMousePos - ray.Origin());
+    glm::vec3 currentMouseWorldPos = ray.Origin() + ray.Direction() * distToPrev;
+    
+    glm::vec3 currentScreen = worldToScreen(currentMouseWorldPos);
+    glm::vec3 previousScreen = worldToScreen(previousMousePos);
+    
+    if (currentScreen.x < -9000.0f || previousScreen.x < -9000.0f)
+    {
+        return;
+    }
+    
+    glm::vec2 screenSegment = glm::vec2(currentScreen.x - previousScreen.x, 
+                                         currentScreen.y - previousScreen.y);
+    float segmentLength = glm::length(screenSegment);
+    
+    if (segmentLength < 1.0f)
+    {
+        return;
+    }
+    
+    glm::vec2 segmentDir = screenSegment / segmentLength;
+    glm::vec2 prevScreen2D = glm::vec2(previousScreen.x, previousScreen.y);
+    
+    float cutThresholdSq = cutThresholdPixels * cutThresholdPixels;
+    
+    float margin = cutThresholdPixels * 1.5f;
+    float minX = std::min(previousScreen.x, currentScreen.x) - margin;
+    float maxX = std::max(previousScreen.x, currentScreen.x) + margin;
+    float minY = std::min(previousScreen.y, currentScreen.y) - margin;
+    float maxY = std::max(previousScreen.y, currentScreen.y) + margin;
+    
+    for (int i = 0; i < springs.size(); ++i)
+    {
+        const Mass &massA = masses[springs[i].a];
+        const Mass &massB = masses[springs[i].b];
+
+        glm::vec3 springStart = massA.position;
+        glm::vec3 springEnd = massB.position;
+        glm::vec3 springMid = (springStart + springEnd) * 0.5f;
+        
+        glm::vec3 startScreen = worldToScreen(springStart);
+        glm::vec3 endScreen = worldToScreen(springEnd);
+        glm::vec3 midScreen = worldToScreen(springMid);
+        
+        if (startScreen.x < -9000.0f && endScreen.x < -9000.0f && midScreen.x < -9000.0f)
+            continue;
+        
+        bool shouldCut = false;
+        
+        glm::vec3 pointsToCheck[3] = { startScreen, midScreen, endScreen };
+        
+        for (int p = 0; p < 3; p++)
+        {
+            glm::vec3 point = pointsToCheck[p];
+            
+            if (point.x < -9000.0f)
+                continue;
+            
+            if (point.x < minX || point.x > maxX || point.y < minY || point.y > maxY)
+                continue;
+            
+            glm::vec2 point2D = glm::vec2(point.x, point.y);
+            glm::vec2 toPoint = point2D - prevScreen2D;
+            
+            float projection = glm::dot(toPoint, segmentDir);
+            projection = glm::clamp(projection, 0.0f, segmentLength);
+            
+            glm::vec2 closestPoint = prevScreen2D + segmentDir * projection;
+            glm::vec2 diff = point2D - closestPoint;
+            
+            float distanceSq = diff.x * diff.x + diff.y * diff.y;
+            
+            if (distanceSq <= cutThresholdSq)
+            {
+                shouldCut = true;
+                break;
+            }
+        }
+        
+        if (shouldCut)
+        {
+            springsToCut.push_back(i);
+        }
+    }
+
+    if (!springsToCut.empty())
+    {
+        for (int i = springsToCut.size() - 1; i >= 0; --i)
+        {
+            springs.erase(springs.begin() + springsToCut[i]);
+        }
+
+        rebuildGraphicsData();
+        rebuildTextureData();
+        
+        std::cout << "Cut " << springsToCut.size() << " springs\n";
+    }
+}
+
+void Cloth::checkSpringTension()
+{
+    if (!enableTensionBreaking)
+        return;
+    
+    static std::vector<int> tensionCounter;
+    if (tensionCounter.size() != springs.size())
+    {
+        tensionCounter.resize(springs.size(), 0);
+    }
+    
+    std::vector<int> springsToBreak;
+    springsToBreak.reserve(20);
+    
+    const int FRAMES_BEFORE_BREAK = 3;  
+    
+    for (int i = 0; i < springs.size(); ++i)
+    {
+        const Spring& spring = springs[i];
+        const Mass& massA = masses[spring.a];
+        const Mass& massB = masses[spring.b];
+        
+        float currentLength = glm::length(massB.position - massA.position);
+        
+        if (currentLength < 0.0001f)
+            continue;
+            
+        float stretchRatio = currentLength / spring.restLength;
+        
+        if (stretchRatio > tensionBreakThreshold)
+        {
+            tensionCounter[i]++;
+            
+            if (tensionCounter[i] >= FRAMES_BEFORE_BREAK)
+            {
+                bool shouldBreak = true;
+                
+                if ((massA.fixed && !massB.fixed) || (!massA.fixed && massB.fixed))
+                {
+                    if (stretchRatio < tensionBreakThreshold * 1.5f)
+                    {
+                        shouldBreak = false;
+                    }
+                }
+                
+                if (shouldBreak)
+                {
+                    springsToBreak.push_back(i);
+                    
+                    std::cout << "Spring #" << i << " broke! "
+                              << "Stretch: " << stretchRatio << "x "
+                              << "(threshold: " << tensionBreakThreshold << "x)\n";
+                }
+            }
+        }
+        else
+        {
+            tensionCounter[i] = 0;
+        }
+    }
+    
+    if (!springsToBreak.empty())
+    {
+        std::cout << "Breaking " << springsToBreak.size() << " springs due to tension\n";
+        
+        for (int i = springsToBreak.size() - 1; i >= 0; --i)
+        {
+            int springIdx = springsToBreak[i];
+            springs.erase(springs.begin() + springIdx);
+            tensionCounter.erase(tensionCounter.begin() + springIdx);
+        }
+        
+        rebuildGraphicsData();
+        rebuildTextureData();
+    }
+}
+

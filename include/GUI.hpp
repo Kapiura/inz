@@ -67,7 +67,181 @@ public:
             }
         }
 
-       if (ImGui::CollapsingHeader("Lighting", ImGuiTreeNodeFlags_DefaultOpen))
+        if (ImGui::CollapsingHeader("Tension Breaking", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Text("Spring Breaking System");
+            ImGui::Separator();
+            
+            bool tensionEnabled = cloth->getEnableTensionBreaking();
+            if (ImGui::Checkbox("Enable Tension Breaking (T)", &tensionEnabled))
+            {
+                cloth->setEnableTensionBreaking(tensionEnabled);
+            }
+            
+            if (tensionEnabled)
+            {
+                float threshold = cloth->getTensionBreakThreshold();
+                if (ImGui::SliderFloat("Break Threshold ([/])", &threshold, 2.0f, 10.0f, "%.2fx"))
+                {
+                    cloth->setTensionBreakThreshold(threshold);
+                }
+                ImGui::TextWrapped("Threshold: How much a spring can stretch before breaking (e.g., 3.5x = 350%% of rest length)");
+                ImGui::Text("Current: %.2fx (springs break after 3 frames at this stretch)", threshold);
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Physical Properties"))
+        {
+            ImGui::Text("These settings require cloth reset to apply");
+            ImGui::Separator();
+            
+            static float massValue = 0.5f;
+            static float structuralStiff = 100.0f;
+            static float structuralDamping = 1.5f;
+            static float shearStiff = 200.0f;
+            static float shearDamping = 1.0f;
+            static float bendingStiff = 100.0f;
+            static float bendingDamping = 0.8f;
+            
+            ImGui::Text("Mass Properties:");
+            ImGui::SliderFloat("Point Mass", &massValue, 0.1f, 5.0f, "%.2f");
+            ImGui::TextWrapped("Mass of each point in the cloth");
+            
+            ImGui::Separator();
+            ImGui::Text("Structural Springs (Main fabric):");
+            ImGui::SliderFloat("Structural Stiffness", &structuralStiff, 10.0f, 500.0f, "%.1f");
+            ImGui::SliderFloat("Structural Damping", &structuralDamping, 0.1f, 5.0f, "%.2f");
+            
+            ImGui::Separator();
+            ImGui::Text("Shear Springs (Diagonal resistance):");
+            ImGui::SliderFloat("Shear Stiffness", &shearStiff, 10.0f, 500.0f, "%.1f");
+            ImGui::SliderFloat("Shear Damping", &shearDamping, 0.1f, 5.0f, "%.2f");
+            
+            ImGui::Separator();
+            ImGui::Text("Bending Springs (Folding resistance):");
+            ImGui::SliderFloat("Bending Stiffness", &bendingStiff, 10.0f, 500.0f, "%.1f");
+            ImGui::SliderFloat("Bending Damping", &bendingDamping, 0.1f, 5.0f, "%.2f");
+            
+            ImGui::Separator();
+            
+            if (ImGui::Button("Soft Silk"))
+            {
+                massValue = 0.3f;
+                structuralStiff = 50.0f;
+                shearStiff = 80.0f;
+                bendingStiff = 30.0f;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Normal Fabric"))
+            {
+                massValue = 0.5f;
+                structuralStiff = 100.0f;
+                shearStiff = 200.0f;
+                bendingStiff = 100.0f;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Heavy Canvas"))
+            {
+                massValue = 1.5f;
+                structuralStiff = 300.0f;
+                shearStiff = 400.0f;
+                bendingStiff = 250.0f;
+            }
+            
+            if (ImGui::Button("Rubber Sheet"))
+            {
+                massValue = 0.8f;
+                structuralStiff = 150.0f;
+                shearStiff = 150.0f;
+                bendingStiff = 80.0f;
+                structuralDamping = 3.0f;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Steel Mesh"))
+            {
+                massValue = 2.0f;
+                structuralStiff = 500.0f;
+                shearStiff = 500.0f;
+                bendingStiff = 400.0f;
+            }
+            
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(1, 0.5, 0, 1), "Note: Click 'Apply & Reset' to use new values");
+            
+            if (ImGui::Button("Apply & Reset Cloth", ImVec2(-1, 40)))
+            {
+                cloth->setPhysicalProperties(massValue, 
+                                            structuralStiff, structuralDamping,
+                                            shearStiff, shearDamping,
+                                            bendingStiff, bendingDamping);
+                cloth->reset();
+                std::cout << "Applied new physical properties and reset cloth\n";
+            }
+        }
+
+        // Cutting Parameters
+        if (ImGui::CollapsingHeader("Cutting Parameters"))
+        {
+            static float cutThreshold = 10.0f;
+            
+            ImGui::Text("Cut Precision:");
+            ImGui::SliderFloat("Cut Radius (pixels)", &cutThreshold, 5.0f, 50.0f, "%.1f");
+            ImGui::TextWrapped("How precise the cutting is. Lower = more precise, higher = easier to cut");
+            
+            cloth->setCutThreshold(cutThreshold);
+            
+            ImGui::Separator();
+            
+            if (ImGui::Button("Very Precise (5px)"))
+                cutThreshold = 5.0f;
+            ImGui::SameLine();
+            if (ImGui::Button("Normal (10px)"))
+                cutThreshold = 10.0f;
+            ImGui::SameLine();
+            if (ImGui::Button("Easy (20px)"))
+                cutThreshold = 20.0f;
+        }
+
+        if (ImGui::CollapsingHeader("Constraint Solver"))
+        {
+            static int solverIterations = 5;
+            static float correctionFactor = 0.15f;
+            static float maxStretchRatio = 1.2f;
+            
+            ImGui::Text("Solver Settings:");
+            ImGui::SliderInt("Iterations", &solverIterations, 1, 20);
+            ImGui::TextWrapped("More iterations = more stable but slower");
+            
+            ImGui::SliderFloat("Correction Factor", &correctionFactor, 0.01f, 0.5f, "%.3f");
+            ImGui::TextWrapped("How quickly springs correct their length");
+            
+            ImGui::SliderFloat("Max Stretch Ratio", &maxStretchRatio, 1.1f, 2.0f, "%.2f");
+            ImGui::TextWrapped("Maximum allowed stretch before hard constraint");
+            
+            cloth->setSolverParameters(solverIterations, correctionFactor, maxStretchRatio);
+            
+            ImGui::Separator();
+            
+            if (ImGui::Button("Stable (10 iter)"))
+            {
+                solverIterations = 10;
+                correctionFactor = 0.15f;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Fast (3 iter)"))
+            {
+                solverIterations = 3;
+                correctionFactor = 0.25f;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Very Stable (15 iter)"))
+            {
+                solverIterations = 15;
+                correctionFactor = 0.1f;
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Lighting"))
         {
             ImGui::Text("Light Source Position");
             ImGui::SliderFloat("Light X", &lightPos->x, -20.0f, 20.0f, "%.1f");
@@ -98,7 +272,7 @@ public:
             ImGui::SameLine();
             if (ImGui::Button("Right"))
             {
-                *lightPos = glm::vec3(10.0f, 5.0f, 0.0f);
+                *lightPos = glm::vec3(10.0f, 5.0f, 5.0f);
             }
             ImGui::SameLine();
             if (ImGui::Button("Default"))
@@ -129,7 +303,7 @@ public:
                        lightPos->x, lightPos->y, lightPos->z);
         }
 
-        if (ImGui::CollapsingHeader("Cloth Dimensions", ImGuiTreeNodeFlags_DefaultOpen))
+        if (ImGui::CollapsingHeader("Cloth Dimensions"))
         {
             static float newWidth = cloth->getClothWidth();
             static float newHeight = cloth->getClothHeight();
@@ -330,6 +504,8 @@ public:
             ImGui::TextWrapped("W/A/S/D - Move camera (FPS mode)");
             ImGui::TextWrapped("Mouse - Look around (FPS mode)");
             ImGui::TextWrapped("Scroll - Zoom");
+            ImGui::TextWrapped("T - Toggle tension breaking");
+            ImGui::TextWrapped("[ / ] - Adjust break threshold");
             ImGui::TextWrapped("H - Show full controls in console");
         }
         

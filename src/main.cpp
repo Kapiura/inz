@@ -325,7 +325,6 @@ void setupCallbacks(GLFWwindow *window)
     glfwSetCharCallback(window, charCallback);
 }
 
-
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
     ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
@@ -491,6 +490,33 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         }
         break;
 
+    case GLFW_KEY_T:
+        {
+            bool tensionEnabled = cloth->getEnableTensionBreaking();
+            tensionEnabled = !tensionEnabled;
+            cloth->setEnableTensionBreaking(tensionEnabled);
+            std::cout << "Tension breaking: " << (tensionEnabled ? "ON" : "OFF") << std::endl;
+        }
+        break;
+
+    case GLFW_KEY_LEFT_BRACKET: 
+        {
+            float threshold = cloth->getTensionBreakThreshold();
+            threshold = glm::max(threshold - 0.2f, 2.0f);
+            cloth->setTensionBreakThreshold(threshold);
+            std::cout << "Break threshold: " << threshold << "x" << std::endl;
+        }
+        break;
+
+    case GLFW_KEY_RIGHT_BRACKET: 
+        {
+            float threshold = cloth->getTensionBreakThreshold();
+            threshold = glm::min(threshold + 0.2f, 10.0f);
+            cloth->setTensionBreakThreshold(threshold);
+            std::cout << "Break threshold: " << threshold << "x" << std::endl;
+        }
+        break;
+
     case GLFW_KEY_H:
         std::cout << "\n========== CONTROLS ==========\n";
         std::cout << "\n--- Basic ---\n";
@@ -511,6 +537,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         std::cout << "G - Toggle gravity\n";
         std::cout << "O - Toggle oscillation\n";
         
+        std::cout << "\n--- Tension Breaking ---\n";
+        std::cout << "T - Toggle tension breaking\n";
+        std::cout << "[ - Decrease break threshold\n";
+        std::cout << "] - Increase break threshold\n";
+        
         std::cout << "\n--- Camera ---\n";
         std::cout << "W/A/S/D - Move\n";
         std::cout << "Space/Shift - Up/Down\n";
@@ -524,6 +555,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         break;
     }
 }
+
 
 void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
 {
@@ -667,14 +699,19 @@ void updateGrabbedMass(GLFWwindow *window)
     }
     else
     {
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), 
+                                                (float)SCR_WIDTH / (float)SCR_HEIGHT, 
+                                                0.1f, 100.0f);
+        glm::mat4 view = camera.GetViewMatrix();
+        
+        cloth->cutSpringsWithRay(ray, lastMouseWorldPos, view, projection, SCR_WIDTH, SCR_HEIGHT);
+        
         glm::vec3 planeNormal = glm::vec3(0.0f, 0.0f, 1.0f);
         glm::vec3 planePoint = glm::vec3(0.0f, 2.5f, 0.0f);
         glm::vec3 currentMouseWorldPos;
 
         if (rayPlaneIntersection(ray, planePoint, planeNormal, currentMouseWorldPos))
         {
-            cloth->cutSpringsWithRay(ray, lastMouseWorldPos);
-            
             if (cuttingPath.empty() || 
                 glm::length(currentMouseWorldPos - cuttingPath.back()) > 0.1f)
             {

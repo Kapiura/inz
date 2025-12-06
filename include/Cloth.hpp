@@ -62,7 +62,9 @@ class Cloth
     void releaseMassPoint(int index);
 
     void checkTearingAroundPoint(int massIndex);
-    void cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos);
+    void cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos, 
+                       const glm::mat4 &view, const glm::mat4 &projection,
+                       int screenWidth, int screenHeight);
     void calculateNormals();
 
     void removeIsolatedMasses();
@@ -100,6 +102,41 @@ class Cloth
     
     ForceManager& getForceManager() { return forceManager; }
     const ForceManager& getForceManager() const { return forceManager; }
+
+    void checkSpringTension();
+    
+    // Tension breaking getters/setters
+    float getTensionBreaking() const { return tensionBreakThreshold; }
+    void setTensionBreaking(float threshold) { tensionBreakThreshold = threshold; }
+    
+    float getTensionBreakThreshold() const { return tensionBreakThreshold; }
+    void setTensionBreakThreshold(float threshold) { tensionBreakThreshold = threshold; }
+    
+    bool getEnableTensionBreaking() const { return enableTensionBreaking; }
+    void setEnableTensionBreaking(bool enabled) { enableTensionBreaking = enabled; }
+
+    void setCutThreshold(float threshold) { cutThresholdPixels = threshold; }
+    float getCutThreshold() const { return cutThresholdPixels; }
+
+    void setPhysicalProperties(float mass, float structStiff, float structDamp,
+                              float shearStiff, float shearDamp,
+                              float bendStiff, float bendDamp)
+    {
+        defaultMass = mass;
+        defaultStructuralStiffness = structStiff;
+        defaultStructuralDamping = structDamp;
+        defaultShearStiffness = shearStiff;
+        defaultShearDamping = shearDamp;
+        defaultBendingStiffness = bendStiff;
+        defaultBendingDamping = bendDamp;
+    }
+
+    void setSolverParameters(int iterations, float correction, float maxStretch)
+    {
+        solverIterations = iterations;
+        correctionFactor = correction;
+        maxStretchRatio = maxStretch;
+    }
 
   private:
     int resX, resY;
@@ -139,4 +176,20 @@ class Cloth
 
     int selectedMassIndex = -1;
     glm::vec3 lastMouseWorldPos;
+
+    float tensionBreakThreshold = 3.5f;  
+    bool enableTensionBreaking = true;
+
+    float cutThresholdPixels = 10.0f;
+    int solverIterations = 5;
+    float correctionFactor = 0.15f;
+    float maxStretchRatio = 1.2f;
+
+    float defaultMass = 0.5f;
+    float defaultStructuralStiffness = 100.0f;
+    float defaultStructuralDamping = 1.5f;
+    float defaultShearStiffness = 200.0f;
+    float defaultShearDamping = 1.0f;
+    float defaultBendingStiffness = 100.0f;
+    float defaultBendingDamping = 0.8f;
 };
