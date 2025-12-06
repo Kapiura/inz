@@ -5,12 +5,28 @@
 #include <imgui_impl_opengl3.h>
 #include "Cloth.hpp"
 #include "Camera.hpp"
+#include "Force.hpp"
+#include "AnalysisData.hpp"
 #include <glm/glm.hpp>
+#include <algorithm>  
+#include <sstream>
+#include <iomanip>
+#include <fstream>
 
 class ClothGUI
 {
 public:
-    ClothGUI() = default;
+    ClothGUI() 
+    : showAnalysisWindow(false), 
+      showPlotsWindow(false), 
+      showEventLog(false), 
+      autoScrollEvents(true),
+      velocityColor(ImVec4(0.2f, 0.8f, 0.3f, 1.0f)),
+      energyColor(ImVec4(1.0f, 0.7f, 0.0f, 1.0f)),
+      tensionColor(ImVec4(1.0f, 0.2f, 0.2f, 1.0f)),
+      forceColor(ImVec4(0.3f, 0.5f, 1.0f, 1.0f))
+    {
+    }
     
     void init(GLFWwindow* window, const char* glsl_version = "#version 330")
     {
@@ -64,6 +80,74 @@ public:
             if (camera->getCameraBlocked())
             {
                 ImGui::TextColored(ImVec4(1,1,0,1), "Press C to unlock camera for GUI!");
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Analysis Windows", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Text("Data Analysis & Monitoring");
+            ImGui::Separator();
+            
+            if (ImGui::Button("Point Analysis", ImVec2(150, 0)))
+                showAnalysisWindow = !showAnalysisWindow;
+            ImGui::SameLine();
+            if (showAnalysisWindow)
+                ImGui::TextColored(ImVec4(0,1,0,1), "[ON]");
+            else
+                ImGui::TextColored(ImVec4(0.5f,0.5f,0.5f,1), "[OFF]");
+            
+            if (ImGui::Button("Real-Time Plots", ImVec2(150, 0)))
+                showPlotsWindow = !showPlotsWindow;
+            ImGui::SameLine();
+            if (showPlotsWindow)
+                ImGui::TextColored(ImVec4(0,1,0,1), "[ON]");
+            else
+                ImGui::TextColored(ImVec4(0.5f,0.5f,0.5f,1), "[OFF]");
+            
+            if (ImGui::Button("Event Log", ImVec2(150, 0)))
+                showEventLog = !showEventLog;
+            ImGui::SameLine();
+            if (showEventLog)
+                ImGui::TextColored(ImVec4(0,1,0,1), "[ON]");
+            else
+                ImGui::TextColored(ImVec4(0.5f,0.5f,0.5f,1), "[OFF]");
+            
+            ImGui::Separator();
+            
+            ClothAnalysis& analysis = cloth->getAnalysis();
+            bool recording = analysis.isRecordingEnabled();
+            if (ImGui::Checkbox("Record Data", &recording))
+                analysis.setRecordingEnabled(recording);
+            
+            if (recording)
+            {
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "● REC");
+            }
+            
+            ImGui::TextWrapped("Select a mass point to record its data");
+            
+            if (ImGui::Button("Clear History", ImVec2(150, 0)))
+            {
+                analysis.clearHistory();
+                std::cout << "Analysis history cleared\n";
+            }
+            
+            ImGui::SameLine();
+            if (ImGui::Button("Export CSV", ImVec2(150, 0)))
+            {
+                std::string csvData = analysis.exportToCSV();
+                std::ofstream file("cloth_analysis.csv");
+                if (file.is_open())
+                {
+                    file << csvData;
+                    file.close();
+                    std::cout << "Data exported to cloth_analysis.csv\n";
+                }
+                else
+                {
+                    std::cout << "Failed to export CSV\n";
+                }
             }
         }
 
@@ -179,7 +263,6 @@ public:
             }
         }
 
-        // Cutting Parameters
         if (ImGui::CollapsingHeader("Cutting Parameters"))
         {
             static float cutThreshold = 10.0f;
@@ -510,5 +593,317 @@ public:
         }
         
         ImGui::End();
+
+        AnalysisDisplayData analysisData = cloth->getAnalysisDisplayData();
+        
+        if (showAnalysisWindow)
+            drawAnalysisWindow(analysisData);
+        
+        if (showPlotsWindow)
+            drawRealTimePlots(analysisData);
+        
+        if (showEventLog)
+            drawEventLog(cloth);
     }
+
+
+    void drawAnalysisWindow(const AnalysisDisplayData& data)
+{
+    ImGui::Begin("Point Analysis", &showAnalysisWindow, ImGuiWindowFlags_AlwaysAutoResize);
+    
+    if (data.selectedMassIndex < 0)
+    {
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), 
+                          "No point selected");
+        ImGui::TextWrapped("Click on a mass point in GUI mode to analyze it.");
+        ImGui::Text("Press C to unlock camera for point selection.");
+        ImGui::End();
+        return;
+    }
+    
+    ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), 
+                      "Selected Mass: #%d", data.selectedMassIndex);
+    ImGui::Separator();
+    
+    if (ImGui::CollapsingHeader("Position", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::Text("X: %8.3f", data.position.x);
+        ImGui::Text("Y: %8.3f", data.position.y);
+        ImGui::Text("Z: %8.3f", data.position.z);
+    }
+    
+    if (ImGui::CollapsingHeader("Motion", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::TextColored(velocityColor, "Velocity");
+        ImGui::Text("  VX: %7.3f m/s", data.velocity.x);
+        ImGui::Text("  VY: %7.3f m/s", data.velocity.y);
+        ImGui::Text("  VZ: %7.3f m/s", data.velocity.z);
+        ImGui::TextColored(velocityColor, "Speed: %.3f m/s", data.speed);
+        
+        ImGui::Separator();
+        
+        ImGui::TextColored(forceColor, "Acceleration");
+        ImGui::Text("  AX: %7.3f m/s²", data.acceleration.x);
+        ImGui::Text("  AY: %7.3f m/s²", data.acceleration.y);
+        ImGui::Text("  AZ: %7.3f m/s²", data.acceleration.z);
+        
+        float accMag = glm::length(data.acceleration);
+        ImGui::TextColored(forceColor, "Magnitude: %.3f m/s²", accMag);
+    }
+    
+    if (ImGui::CollapsingHeader("Energy", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::TextColored(energyColor, "Kinetic Energy: %.4f J", data.kineticEnergy);
+        
+        float energyNormalized = std::min(data.kineticEnergy / 10.0f, 1.0f);
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, energyColor);
+        ImGui::ProgressBar(energyNormalized, ImVec2(-1, 0), "");
+        ImGui::PopStyleColor();
+    }
+    
+    if (ImGui::CollapsingHeader("Structure", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::Text("Connected Springs: %d", data.connectedSprings);
+        
+        ImGui::Separator();
+        
+        ImGui::TextColored(tensionColor, "Avg Tension: %.3f", data.averageTension);
+        
+        float tensionNormalized = std::min(data.averageTension / 2.0f, 1.0f);
+        
+        ImVec4 tensionBarColor;
+        if (tensionNormalized > 0.7f)
+            tensionBarColor = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
+        else if (tensionNormalized > 0.5f)
+            tensionBarColor = ImVec4(1.0f, 0.7f, 0.0f, 1.0f);
+        else
+            tensionBarColor = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
+        
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, tensionBarColor);
+        ImGui::ProgressBar(tensionNormalized, ImVec2(-1, 0), "");
+        ImGui::PopStyleColor();
+        
+        if (tensionNormalized > 0.7f)
+            ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "⚠ High Tension!");
+    }
+    
+    ImGui::Separator();
+    
+    if (ImGui::CollapsingHeader("System Statistics", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::Text("Total Energy: %.3f J", data.totalEnergy);
+        ImGui::Text("Avg System Tension: %.3f", data.averageSystemTension);
+        ImGui::Text("Max Tension: %.3f", data.maxTension);
+        
+        ImGui::Separator();
+        
+        ImGui::Text("Total Springs: %d", data.totalSprings);
+        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), 
+                          "Broken Springs: %d", data.brokenSprings);
+        
+        if (data.brokenSprings > 0)
+        {
+            float breakPercentage = (data.brokenSprings * 100.0f) / 
+                                   (data.totalSprings + data.brokenSprings);
+            ImGui::Text("Break Rate: %.1f%%", breakPercentage);
+        }
+    }
+    
+    ImGui::End();
+}
+
+void drawRealTimePlots(const AnalysisDisplayData& data)
+{
+    ImGui::Begin("Real-Time Plots", &showPlotsWindow, ImGuiWindowFlags_AlwaysAutoResize);
+    
+    if (data.timeHistory.empty())
+    {
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), 
+                          "No data recorded");
+        ImGui::TextWrapped("Enable 'Record Data' and select a mass point to see plots.");
+        ImGui::End();
+        return;
+    }
+    
+    ImGui::Text("History: %zu data points", data.timeHistory.size());
+    ImGui::Text("Time Range: %.2f - %.2f s", 
+               data.timeHistory.front(), data.timeHistory.back());
+    ImGui::Separator();
+    
+    if (ImGui::CollapsingHeader("Velocity over Time", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::PushStyleColor(ImGuiCol_PlotLines, velocityColor);
+        ImGui::PlotLines("##Velocity", 
+                        data.velocityHistory.data(), 
+                        static_cast<int>(data.velocityHistory.size()),
+                        0, "Speed (m/s)", 
+                        0.0f, FLT_MAX, 
+                        ImVec2(400, 120));
+        ImGui::PopStyleColor();
+        
+        if (!data.velocityHistory.empty())
+        {
+            float current = data.velocityHistory.back();
+            float max = *std::max_element(data.velocityHistory.begin(), 
+                                         data.velocityHistory.end());
+            float avg = 0.0f;
+            for (float v : data.velocityHistory) avg += v;
+            avg /= data.velocityHistory.size();
+            
+            ImGui::Text("Current: %.3f m/s | Max: %.3f m/s | Avg: %.3f m/s", 
+                       current, max, avg);
+        }
+    }
+    
+    if (ImGui::CollapsingHeader("Kinetic Energy over Time", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::PushStyleColor(ImGuiCol_PlotLines, energyColor);
+        ImGui::PlotLines("##Energy", 
+                        data.energyHistory.data(), 
+                        static_cast<int>(data.energyHistory.size()),
+                        0, "Energy (J)", 
+                        0.0f, FLT_MAX, 
+                        ImVec2(400, 120));
+        ImGui::PopStyleColor();
+        
+        if (!data.energyHistory.empty())
+        {
+            float current = data.energyHistory.back();
+            float max = *std::max_element(data.energyHistory.begin(), 
+                                         data.energyHistory.end());
+            float avg = 0.0f;
+            for (float e : data.energyHistory) avg += e;
+            avg /= data.energyHistory.size();
+            
+            ImGui::Text("Current: %.4f J | Max: %.4f J | Avg: %.4f J", 
+                       current, max, avg);
+        }
+    }
+    
+    if (ImGui::CollapsingHeader("Spring Tension over Time", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::PushStyleColor(ImGuiCol_PlotLines, tensionColor);
+        ImGui::PlotLines("##Tension", 
+                        data.tensionHistory.data(), 
+                        static_cast<int>(data.tensionHistory.size()),
+                        0, "Tension", 
+                        0.0f, FLT_MAX, 
+                        ImVec2(400, 120));
+        ImGui::PopStyleColor();
+        
+        if (!data.tensionHistory.empty())
+        {
+            float current = data.tensionHistory.back();
+            float max = *std::max_element(data.tensionHistory.begin(), 
+                                         data.tensionHistory.end());
+            float avg = 0.0f;
+            for (float t : data.tensionHistory) avg += t;
+            avg /= data.tensionHistory.size();
+            
+            ImGui::Text("Current: %.3f | Max: %.3f | Avg: %.3f", 
+                       current, max, avg);
+            
+            if (max > 2.0f)
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), 
+                                  "⚠ High tension detected in history!");
+        }
+    }
+    
+    ImGui::End();
+}
+
+void drawEventLog(Cloth* cloth)
+{
+    ImGui::Begin("Event Log", &showEventLog, ImGuiWindowFlags_AlwaysAutoResize);
+    
+    const ClothAnalysis& analysis = cloth->getAnalysis();
+    const auto& events = analysis.getBreakEvents();
+    
+    ImGui::Text("Spring Break Events: %zu", events.size());
+    ImGui::SameLine();
+    ImGui::Checkbox("Auto-scroll", &autoScrollEvents);
+    ImGui::Separator();
+    
+    ImGui::BeginChild("EventList", ImVec2(600, 300), true, 
+                     ImGuiWindowFlags_HorizontalScrollbar);
+    
+    if (events.empty())
+    {
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), 
+                          "No spring break events yet...");
+    }
+    else
+    {
+        for (size_t i = 0; i < events.size(); i++)
+        {
+            const auto& event = events[i];
+            
+            std::stringstream ss;
+            ss << std::fixed << std::setprecision(2);
+            ss << "[" << std::setw(7) << event.time << "s] "
+               << "Spring #" << std::setw(4) << event.springIndex 
+               << " broke at (" 
+               << std::setw(6) << event.position.x << ", " 
+               << std::setw(6) << event.position.y << ", " 
+               << std::setw(6) << event.position.z 
+               << ") | Tension: " << event.tension << "x";
+            
+            ImVec4 color;
+            if (event.tension > 7.0f)
+                color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
+            else if (event.tension > 5.0f)
+                color = ImVec4(1.0f, 0.5f, 0.0f, 1.0f);
+            else
+                color = ImVec4(1.0f, 1.0f, 0.0f, 1.0f);
+            
+            ImGui::TextColored(color, "%s", ss.str().c_str());
+        }
+    }
+    
+    if (autoScrollEvents && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+        ImGui::SetScrollHereY(1.0f);
+    
+    ImGui::EndChild();
+    
+    ImGui::Separator();
+    
+    if (ImGui::Button("Clear Log", ImVec2(120, 0)))
+    {
+        cloth->getAnalysis().clearHistory();
+        std::cout << "Event log cleared\n";
+    }
+    
+    ImGui::SameLine();
+    if (ImGui::Button("Export Log", ImVec2(120, 0)))
+    {
+        std::ofstream file("spring_break_events.txt");
+        if (file.is_open())
+        {
+            for (const auto& event : events)
+            {
+                file << std::fixed << std::setprecision(2);
+                file << "[" << event.time << "s] Spring #" << event.springIndex 
+                     << " broke at (" << event.position.x << ", " 
+                     << event.position.y << ", " << event.position.z 
+                     << ") | Tension: " << event.tension << "x\n";
+            }
+            file.close();
+            std::cout << "Event log exported to spring_break_events.txt\n";
+        }
+    }
+    
+    ImGui::End();
+}
+
+
+private:
+    bool showAnalysisWindow;
+    bool showPlotsWindow;
+    bool showEventLog;
+    bool autoScrollEvents;
+    ImVec4 velocityColor;
+    ImVec4 energyColor;
+    ImVec4 tensionColor;
+    ImVec4 forceColor;
+
 };

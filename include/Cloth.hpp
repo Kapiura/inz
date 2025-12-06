@@ -6,6 +6,10 @@
 
 #include "Shader.hpp"
 #include "Force.hpp"
+#include "AnalysisData.hpp"
+
+extern bool trackingMode;
+extern int trackedMassIndex;
 
 class AABB;
 class Ray;
@@ -78,6 +82,10 @@ class Cloth
     {
         return masses;
     }
+    const std::vector<Spring> &getSprings() const
+    {
+        return springs;
+    }
     void changeMassesVisible()
     {
         massVisible = !massVisible;
@@ -105,7 +113,6 @@ class Cloth
 
     void checkSpringTension();
     
-    // Tension breaking getters/setters
     float getTensionBreaking() const { return tensionBreakThreshold; }
     void setTensionBreaking(float threshold) { tensionBreakThreshold = threshold; }
     
@@ -137,6 +144,10 @@ class Cloth
         correctionFactor = correction;
         maxStretchRatio = maxStretch;
     }
+    
+    ClothAnalysis& getAnalysis() { return analysis; }
+    const ClothAnalysis& getAnalysis() const { return analysis; }
+    AnalysisDisplayData getAnalysisDisplayData() const;
 
   private:
     int resX, resY;
@@ -192,4 +203,6 @@ class Cloth
     float defaultShearDamping = 1.0f;
     float defaultBendingStiffness = 100.0f;
     float defaultBendingDamping = 0.8f;
+    
+    ClothAnalysis analysis;
 };

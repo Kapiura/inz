@@ -1,5 +1,6 @@
-#include "Cloth.hpp"
 #include "AABB.hpp"
+#include "AnalysisData.hpp"
+#include "Cloth.hpp"
 #include "Ray.hpp"
 
 #include <algorithm>
@@ -457,19 +458,29 @@ void Cloth::draw(Shader &shader)
     }
 
     if (massVisible)
-    {
-        shader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
-        glPointSize(5.0f);
-        glBindVertexArray(VAO_masses);
-        glDrawArrays(GL_POINTS, 0, massesVertices.size() / 3);
+{
+    shader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
+    glPointSize(5.0f);
+    glBindVertexArray(VAO_masses);
+    glDrawArrays(GL_POINTS, 0, massesVertices.size() / 3);
 
-        if (selectedMassIndex != -1)
-        {
-            shader.setVec3("color", glm::vec3(1.0f, 1.0f, 0.0f));
-            glPointSize(10.0f);
-            glDrawArrays(GL_POINTS, selectedMassIndex, 1);
-        }
+    if (selectedMassIndex != -1)
+    {
+        shader.setVec3("color", glm::vec3(1.0f, 1.0f, 0.0f)); 
+        glPointSize(10.0f);
+        glDrawArrays(GL_POINTS, selectedMassIndex, 1);
     }
+
+    extern int trackedMassIndex;
+extern bool trackingMode;
+if (trackingMode && trackedMassIndex >= 0 && trackedMassIndex < masses.size())
+{
+    shader.setVec3("color", glm::vec3(0.0f, 1.0f, 1.0f)); 
+    glPointSize(15.0f);
+    glBindVertexArray(VAO_masses);
+    glDrawArrays(GL_POINTS, trackedMassIndex, 1);
+}
+}
 
     glBindVertexArray(0);
 }
@@ -694,6 +705,14 @@ void Cloth::update(float dt)
     {
         frameCounter = 0;
     }
+
+    analysis.updateGlobalStats(masses, springs, simulationTime);
+    
+    if (trackingMode && trackedMassIndex >= 0 && trackedMassIndex < masses.size())
+{
+    analysis.recordMassPointData(trackedMassIndex, masses[trackedMassIndex], 
+                                springs, simulationTime);
+}
 
     rebuildGraphicsData();
     rebuildTextureData();
@@ -1037,6 +1056,9 @@ void Cloth::checkSpringTension()
                 {
                     springsToBreak.push_back(i);
                     
+                    glm::vec3 breakPos = (massA.position + massB.position) * 0.5f;
+                    analysis.recordSpringBreak(i, breakPos, stretchRatio, simulationTime);
+                    
                     std::cout << "Spring #" << i << " broke! "
                               << "Stretch: " << stretchRatio << "x "
                               << "(threshold: " << tensionBreakThreshold << "x)\n";
@@ -1065,3 +1087,52 @@ void Cloth::checkSpringTension()
     }
 }
 
+AnalysisDisplayData Cloth::getAnalysisDisplayData() const
+{
+    AnalysisDisplayData data;
+    
+    extern int trackedMassIndex;
+    extern bool trackingMode;
+    
+    data.selectedMassIndex = trackingMode ? trackedMassIndex : -1;
+    data.totalSprings = springs.size();
+    data.brokenSprings = analysis.getTotalBrokenSprings();
+    data.totalEnergy = analysis.getTotalEnergy();
+    data.averageSystemTension = analysis.getAverageTension();
+    data.maxTension = analysis.getMaxTension();
+    
+    if (trackingMode && trackedMassIndex >= 0 && trackedMassIndex < masses.size())
+    {
+        const Mass& mass = masses[trackedMassIndex];
+        data.position = mass.position;
+        data.velocity = analysis.calculateVelocity(mass);
+        data.speed = glm::length(data.velocity);
+        data.acceleration = mass.acceleration;
+        data.kineticEnergy = analysis.calculateKineticEnergy(mass);
+        data.averageTension = analysis.calculateAverageSpringTension(
+            trackedMassIndex, masses, springs);
+        
+        data.connectedSprings = 0;
+        for (const auto& spring : springs)
+        {
+            if (spring.a == trackedMassIndex || spring.b == trackedMassIndex)
+                data.connectedSprings++;
+        }
+    }
+    
+    const auto& history = analysis.getHistoryData();
+    data.timeHistory.reserve(history.size());
+    data.velocityHistory.reserve(history.size());
+    data.energyHistory.reserve(history.size());
+    data.tensionHistory.reserve(history.size());
+    
+    for (const auto& point : history)
+    {
+        data.timeHistory.push_back(point.time);
+        data.velocityHistory.push_back(glm::length(point.velocity));
+        data.energyHistory.push_back(point.kineticEnergy);
+        data.tensionHistory.push_back(point.averageSpringTension);
+    }
+    
+    return data;
+}

@@ -36,15 +36,16 @@ add_library(glad src/glad.c)
 target_include_directories(glad PUBLIC include)
 
 add_executable(my_opengl_in_test
-    src/main.cpp
     src/AABB.cpp
+    src/AnalysisData.cpp
     src/Camera.cpp
+    src/Cloth.cpp
+    src/Force.cpp
+    src/main.cpp
     src/Ray.cpp
     src/Shader.cpp
-    src/Cloth.cpp
-    src/Texture.cpp
     src/Skybox.cpp
-    src/Force.cpp
+    src/Texture.cpp
 )
 
 find_package(OpenGL REQUIRED)
@@ -56,6 +57,6 @@ target_link_libraries(my_opengl_in_test
     PRIVATE
         glad
         glfw
-        OpenGL::GL
         imgui_lib
+        OpenGL::GL
 )

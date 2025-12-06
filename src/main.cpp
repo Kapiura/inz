@@ -40,6 +40,9 @@ float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
 
+bool trackingMode = false;
+int trackedMassIndex = -1;
+
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
@@ -344,7 +347,40 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     switch (key)
     {
     case GLFW_KEY_ESCAPE:
-        glfwSetWindowShouldClose(window, true);
+        if (trackingMode)
+        {
+            trackingMode = false;
+            trackedMassIndex = -1;
+            cloth->getAnalysis().setRecordingEnabled(false);
+            std::cout << "Tracking mode disabled\n";
+        }
+        else
+        {
+            glfwSetWindowShouldClose(window, true);
+        }
+        break;
+
+    case GLFW_KEY_X:
+        if (trackingMode)
+        {
+            bool recording = cloth->getAnalysis().isRecordingEnabled();
+            cloth->getAnalysis().setRecordingEnabled(!recording);
+            std::cout << "Recording: " << (!recording ? "ON" : "OFF") << "\n";
+        }
+        else
+        {
+            std::cout << "No point tracked. Right-click on a point first.\n";
+        }
+        break;
+
+    case GLFW_KEY_L:
+        if (trackingMode)
+        {
+            trackingMode = false;
+            cloth->getAnalysis().setRecordingEnabled(false);
+            std::cout << "Point #" << trackedMassIndex << " deselected\n";
+            trackedMassIndex = -1;
+        }
         break;
         
     case GLFW_KEY_R:
@@ -547,6 +583,12 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         std::cout << "Space/Shift - Up/Down\n";
         std::cout << "Mouse - Look around\n";
         std::cout << "Scroll - Zoom\n";
+
+        std::cout << "\n--- Point Tracking ---\n";
+        std::cout << "Left Click - Select/Track point\n";
+        std::cout << "Click again - Deselect point\n";
+        std::cout << "X - Toggle tracking mode\n";
+        std::cout << "ESC - Cancel tracking\n";
         
         std::cout << "\n--- Info ---\n";
         std::cout << "H - Show this help\n";
@@ -564,53 +606,91 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
     ImGuiIO& io = ImGui::GetIO();
     if (io.WantCaptureMouse)
         return;
-    
-    if (button != GLFW_MOUSE_BUTTON_LEFT)
-        return;
 
     AppData *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
     Cloth *cloth = appData->cloth;
 
-    if (action == GLFW_PRESS)
+    if (button == GLFW_MOUSE_BUTTON_LEFT)
     {
-        if (camera.getCameraBlocked())
-            return;
-
-        Ray ray = createRayFromMouse(window);
-        mousePressed = true;
-
-        selectedMassIndex = cloth->pickMassPoint(ray);
-        massSelected = (selectedMassIndex != -1);
-
-        if (massSelected)
+        if (action == GLFW_PRESS)
         {
-            Mass &mass = cloth->getMass(selectedMassIndex);
-            interactionDistance = glm::length(mass.position - camera.Position);
-            lastMouseWorldPos = getWorldPosFromRay(ray, interactionDistance);
-            cuttingPath.clear();
-        }
-        else
-        {
-            glm::vec3 planeNormal = glm::vec3(0.0f, 0.0f, 1.0f);
-            glm::vec3 planePoint = glm::vec3(0.0f, 2.5f, 0.0f);
+            if (camera.getCameraBlocked())
+                return;
 
-            if (rayPlaneIntersection(ray, planePoint, planeNormal, lastMouseWorldPos))
+            Ray ray = createRayFromMouse(window);
+            mousePressed = true;
+
+            selectedMassIndex = cloth->pickMassPoint(ray);
+            massSelected = (selectedMassIndex != -1);
+
+            if (massSelected)
             {
+                Mass &mass = cloth->getMass(selectedMassIndex);
+                interactionDistance = glm::length(mass.position - camera.Position);
+                lastMouseWorldPos = getWorldPosFromRay(ray, interactionDistance);
                 cuttingPath.clear();
-                cuttingPath.push_back(lastMouseWorldPos);
+                std::cout << "Grabbed mass point #" << selectedMassIndex << " (drag mode)\n";
+            }
+            else
+            {
+                glm::vec3 planeNormal = glm::vec3(0.0f, 0.0f, 1.0f);
+                glm::vec3 planePoint = glm::vec3(0.0f, 2.5f, 0.0f);
+
+                if (rayPlaneIntersection(ray, planePoint, planeNormal, lastMouseWorldPos))
+                {
+                    cuttingPath.clear();
+                    cuttingPath.push_back(lastMouseWorldPos);
+                }
             }
         }
-    }
-    else if (action == GLFW_RELEASE)
-    {
-        mousePressed = false;
-        if (massSelected)
+        else if (action == GLFW_RELEASE)
         {
-            cloth->releaseMassPoint(selectedMassIndex);
-            massSelected = false;
-            selectedMassIndex = -1;
+            mousePressed = false;
+            if (massSelected)
+            {
+                cloth->releaseMassPoint(selectedMassIndex);
+                massSelected = false;
+                selectedMassIndex = -1;
+            }
+            cuttingPath.clear();
         }
-        cuttingPath.clear();
+    }
+    
+    else if (button == GLFW_MOUSE_BUTTON_RIGHT)
+    {
+        if (action == GLFW_PRESS)
+        {
+            if (camera.getCameraBlocked())
+                return;
+
+            Ray ray = createRayFromMouse(window);
+            
+            int clickedIndex = cloth->pickMassPoint(ray);
+            
+            if (clickedIndex != -1)
+            {
+                if (trackedMassIndex == clickedIndex && trackingMode)
+                {
+                    trackingMode = false;
+                    trackedMassIndex = -1;
+                    cloth->getAnalysis().setRecordingEnabled(false);
+                    std::cout << "Tracking disabled for point #" << clickedIndex << "\n";
+                }
+                else
+                {
+                    trackingMode = true;
+                    trackedMassIndex = clickedIndex;
+                    
+                    cloth->getAnalysis().setRecordingEnabled(true);
+                    std::cout << "Tracking enabled for point #" << trackedMassIndex << " (analysis mode)\n";
+                    std::cout << "Right-click again on the same point to deselect\n";
+                }
+            }
+            else
+            {
+                std::cout << "No point found. Right-click on a mass point to track it.\n";
+            }
+        }
     }
 }
 
