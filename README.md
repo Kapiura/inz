@@ -10,11 +10,11 @@
 - [x] - Skybox
 - [x] - Oswietlenie
 - [x] - Cienie
-- [ ] - Analiza parametrow wybranych punktów
-- [ ] - Generowanie danych pomiarowych
+- [x] - Analiza parametrow wybranych punktów
+- [x] - Generowanie danych pomiarowych
 - [x] - Zmiana rozmiaru tkaniny
 - [x] - Mozliwosc przemieszcania zrodlem swiatla
-- [ ] - Może poprawić ciecie tkainy bo dalej pod pewnymi katami/pewnej dlugosci nie przecina badz robi to dosc upo
+- [x] - Może poprawić ciecie tkainy bo dalej pod pewnymi katami/pewnej dlugosci nie przecina badz robi to dosc upo
 - [ ] - Możliwość dodawania wlasnych plikow jako tekstura
 ## Fixes to do
 - [x] - Trzeba zrobic jakis inny pomysl rozrywania tej tkaniny bo za bardzo laguje
