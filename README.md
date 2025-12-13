@@ -100,3 +100,59 @@ make
     - osiagniecia preojekta
     - mzliwe dalsze keirunki rozwjou
 8. Bibnliografiu i zalaczniki
+
+
+# Na brudno
+### Co powinnem opisac
+## 1. Wstep 
+- cel projektu
+- zakres pracy projketu
+- krotkie omowienie
+- koncowe wybory
+
+## 2. Zagadnienia
+- jakies zagadnienia dotyczace symylacji fizyncyzh w celu wprowadzenia czytelnika do tematu
+- jak to sie modeluje, deformacje, rozrywanie, laczenia
+
+- model masa-sprezyna
+- inne modele reprezentacji tkaniny
+- implementacja klasy cloth - masa sprezyan, ich stryuktuyryt itp
+- utworzone parametry i jak one wplywaja na tkanine
+
+- Jak dziala kamera w 3d
+- klasa kamera
+
+- opengl
+- glfw
+- imgui
+- wybor jezyka -> cpp
+- cmake
+- przechowyuwanie plikow - git, github
+- na czym pracuje - linux
+
+## 3. implementacja
+- metoda verleta
+- rozwiazanie i implementacja ciecia tkaniny
+- metody kolizji
+- metoda AABB
+- sposob przedstawienia tekstury
+- Analiztor:
+    - pozycja
+    - predkosci 
+    - tension
+    - energhia kinetyczna
+    - cvs plik 
+- skybox
+- klasa ray i jej wykorzsytanie
+- sily - grwaitacja, oscyluijaca, wiatr -> klasa force
+- komunikacja GUI z aplkacja
+- dzialanie shaderow w opengl
+- dzialanie texturuw w opengl
+
+1. Wstep
+    - cel projektu
+    - problem do rozwiazania
+    - mozliwosci jego realizacji
+    - zakres prac
+    - krotkie omowienie
+    - koncowe wyboru
