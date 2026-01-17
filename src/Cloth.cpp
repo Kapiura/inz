@@ -8,6 +8,9 @@
 #include <set>
 #include <queue>
 #include <stb_image.h>
+#include <map>
+#include <unordered_map>
+#include <tuple>
 
 glm::vec3 midpoint(const glm::vec3 &a, const glm::vec3 &b)
 {
@@ -242,40 +245,50 @@ Cloth::Cloth(float width, float height, int resX, int resY, float floorY)
 
 void Cloth::rebuildGraphicsData()
 {
-    massesVertices.clear();
-    for (const auto &mass : masses)
+    // Resize z zerami - szybsze niż push_back
+    const size_t massVertCount = masses.size() * 3;
+    const size_t springVertCount = springs.size() * 6;
+    
+    if (massesVertices.size() != massVertCount)
+        massesVertices.resize(massVertCount);
+    
+    if (lineVertices.size() != springVertCount)
+        lineVertices.resize(springVertCount);
+    
+    // Masses - optymalizacja z bezpośrednim dostępem
+    for (size_t i = 0; i < masses.size(); i++)
     {
-        massesVertices.push_back(mass.position.x);
-        massesVertices.push_back(mass.position.y);
-        massesVertices.push_back(mass.position.z);
+        const size_t idx = i * 3;
+        const auto& pos = masses[i].position;
+        massesVertices[idx] = pos.x;
+        massesVertices[idx + 1] = pos.y;
+        massesVertices[idx + 2] = pos.z;
     }
 
-    lineVertices.clear();
-    for (const auto &spring : springs)
+    // Springs - optymalizacja
+    for (size_t i = 0; i < springs.size(); i++)
     {
-        lineVertices.push_back(masses[spring.a].position.x);
-        lineVertices.push_back(masses[spring.a].position.y);
-        lineVertices.push_back(masses[spring.a].position.z);
-
-        lineVertices.push_back(masses[spring.b].position.x);
-        lineVertices.push_back(masses[spring.b].position.y);
-        lineVertices.push_back(masses[spring.b].position.z);
-    }
-
-    if (VAO_lines != 0)
-    {
-        glBindBuffer(GL_ARRAY_BUFFER, VBO_lines);
-        glBufferData(GL_ARRAY_BUFFER, lineVertices.size() * sizeof(float), lineVertices.data(), GL_DYNAMIC_DRAW);
+        const size_t idx = i * 6;
+        const auto& spring = springs[i];
+        const auto& posA = masses[spring.a].position;
+        const auto& posB = masses[spring.b].position;
+        
+        lineVertices[idx] = posA.x;
+        lineVertices[idx + 1] = posA.y;
+        lineVertices[idx + 2] = posA.z;
+        lineVertices[idx + 3] = posB.x;
+        lineVertices[idx + 4] = posB.y;
+        lineVertices[idx + 5] = posB.z;
     }
 }
 
 void Cloth::calculateNormals()
 {
+    // Reset normali
     for (auto &mass : masses)
-    {
         mass.normal = glm::vec3(0.0f);
-    }
     
+    // Oblicz normalne dla trójkątów
     for (int y = 0; y < resY - 1; y++)
     {
         for (int x = 0; x < resX - 1; x++)
@@ -297,25 +310,19 @@ void Cloth::calculateNormals()
             if (idx0 < 0 || idx1 < 0 || idx2 < 0 || idx3 < 0)
                 continue;
             
-            glm::vec3 v0 = masses[idx0].position;
-            glm::vec3 v1 = masses[idx1].position;
-            glm::vec3 v2 = masses[idx2].position;
-            
-            glm::vec3 edge1 = v1 - v0;
-            glm::vec3 edge2 = v2 - v0;
-            glm::vec3 normal1 = glm::normalize(glm::cross(edge1, edge2));
+            // Pierwszy trójkąt
+            glm::vec3 edge1 = masses[idx1].position - masses[idx0].position;
+            glm::vec3 edge2 = masses[idx2].position - masses[idx0].position;
+            glm::vec3 normal1 = glm::cross(edge1, edge2);  // Bez normalizacji tutaj
             
             masses[idx0].normal += normal1;
             masses[idx1].normal += normal1;
             masses[idx2].normal += normal1;
             
-            v0 = masses[idx1].position;
-            v1 = masses[idx3].position;
-            v2 = masses[idx2].position;
-            
-            edge1 = v1 - v0;
-            edge2 = v2 - v0;
-            glm::vec3 normal2 = glm::normalize(glm::cross(edge1, edge2));
+            // Drugi trójkąt
+            edge1 = masses[idx3].position - masses[idx1].position;
+            edge2 = masses[idx2].position - masses[idx1].position;
+            glm::vec3 normal2 = glm::cross(edge1, edge2);
             
             masses[idx1].normal += normal2;
             masses[idx3].normal += normal2;
@@ -323,16 +330,14 @@ void Cloth::calculateNormals()
         }
     }
     
+    // Normalizuj na końcu
     for (auto &mass : masses)
     {
-        if (glm::length(mass.normal) > 0.001f)
-        {
-            mass.normal = glm::normalize(mass.normal);
-        }
+        float lengthSq = glm::dot(mass.normal, mass.normal);
+        if (lengthSq > 0.001f)
+            mass.normal *= (1.0f / sqrt(lengthSq));  // Szybsza normalizacja
         else
-        {
             mass.normal = glm::vec3(0.0f, 0.0f, 1.0f);
-        }
     }
 }
 
@@ -458,7 +463,7 @@ void Cloth::draw(Shader &shader)
     }
 
     if (massVisible)
-{
+    {
     shader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
     glPointSize(5.0f);
     glBindVertexArray(VAO_masses);
@@ -472,15 +477,16 @@ void Cloth::draw(Shader &shader)
     }
 
     extern int trackedMassIndex;
-extern bool trackingMode;
-if (trackingMode && trackedMassIndex >= 0 && trackedMassIndex < masses.size())
-{
-    shader.setVec3("color", glm::vec3(0.0f, 1.0f, 1.0f)); 
-    glPointSize(15.0f);
-    glBindVertexArray(VAO_masses);
-    glDrawArrays(GL_POINTS, trackedMassIndex, 1);
-}
-}
+    extern bool trackingMode;
+
+    if (trackingMode && trackedMassIndex >= 0 && trackedMassIndex < masses.size())
+    {
+        shader.setVec3("color", glm::vec3(0.0f, 1.0f, 1.0f)); 
+        glPointSize(15.0f);
+        glBindVertexArray(VAO_masses);
+        glDrawArrays(GL_POINTS, trackedMassIndex, 1);
+    }
+    }
 
     glBindVertexArray(0);
 }
@@ -632,117 +638,171 @@ void Cloth::removeIsolatedMasses()
 void Cloth::update(float dt)
 {
     simulationTime += dt;
-    
-    forceManager.update(dt);
-    
-    for (auto &mass : masses)
+
+    // =========================
+    // FAZA 1: INTEGRACJA (Verlet)
+    // =========================
+    for (Mass &m : masses)
     {
-        if (!mass.fixed)
-        {
-            glm::vec3 totalForce = forceManager.calculateTotalForce(mass, simulationTime);
-            mass.applyForce(std::move(totalForce));
-        }
-        mass.update(dt);
-    }
-    
-    for (int iter = 0; iter < solverIterations; ++iter)
-    {
-        for (auto &spring : springs)
-        {
-            Mass &massA = masses[spring.a];
-            Mass &massB = masses[spring.b];
+        if (m.fixed) continue;
 
-            glm::vec3 delta = massB.position - massA.position;
-            float currentLength = glm::length(delta);
-
-            if (currentLength < 0.0001f)
-                continue;
-
-            float difference = currentLength - spring.restLength;
-            glm::vec3 direction = delta / currentLength;
-            
-            if (currentLength > spring.restLength * maxStretchRatio)
-            {
-                float maxLength = spring.restLength * maxStretchRatio;
-                float overStretch = currentLength - maxLength;
-                float correction = overStretch * 0.5f;
-
-                if (!massA.fixed)
-                    massA.position += direction * correction;
-                if (!massB.fixed)
-                    massB.position -= direction * correction;
-            }
-            else
-            {
-                glm::vec3 correction = direction * difference * 0.5f;
-                float correctionFactorScaled = correctionFactor * (spring.stiffness / 100.0f);
-                
-                if (!massA.fixed)
-                    massA.position += correction * correctionFactorScaled;
-                if (!massB.fixed)
-                    massB.position -= correction * correctionFactorScaled;
-            }
-        }
+        glm::vec3 totalForce = forceManager.calculateTotalForce(m, simulationTime);
+        m.applyForce(std::move(totalForce));
+        m.update(dt);
     }
 
-    for (auto &mass : masses)
-    {
-        if (mass.position.y < floorY)
-        {
-            mass.position.y = floorY;
-            glm::vec3 velocity = mass.position - mass.prevPosition;
-            mass.prevPosition = mass.position - velocity * 0.3f;
-        }
-    }
+    // =========================
+    // FAZA 2: SOLVER SPRĘŻYN (TYLKO HARD CONSTRAINT)
+    // =========================
+// SOLVER SPRĘŻYN – HARD LIMIT (CLAMP DO maxLength)
+// sprężyna NIGDY nie przekroczy maxStretchRatio * restLength
 
-    if (enableTensionBreaking)
-    {
-        checkSpringTension();
-    }
+constexpr float MIN_LEN_SQ = 1e-6f;
 
-    static int frameCounter = 0;
-    if (++frameCounter >= 30)
-    {
-        frameCounter = 0;
-    }
-
-    analysis.updateGlobalStats(masses, springs, simulationTime);
-    
-    if (trackingMode && trackedMassIndex >= 0 && trackedMassIndex < masses.size())
+for (int iter = 0; iter < solverIterations; ++iter)
 {
-    analysis.recordMassPointData(trackedMassIndex, masses[trackedMassIndex], 
-                                springs, simulationTime);
+    for (const Spring &spring : springs)
+    {
+        Mass &a = masses[spring.a];
+        Mass &b = masses[spring.b];
+
+        glm::vec3 delta = b.position - a.position;
+        float lenSq = glm::dot(delta, delta);
+        if (lenSq < MIN_LEN_SQ) continue;
+
+        float restLen = spring.restLength;
+        float maxLen  = restLen * maxStretchRatio;
+        float maxLenSq = maxLen * maxLen;
+
+        if (lenSq <= maxLenSq)
+            continue;
+
+        float len    = std::sqrt(lenSq);
+        float invLen = 1.0f / len;
+        glm::vec3 dir = delta * invLen;
+
+        float wA = a.fixed ? 0.0f : 1.0f;
+        float wB = b.fixed ? 0.0f : 1.0f;
+        float wSum = wA + wB;
+        if (wSum == 0.0f) continue;
+
+        float excess = len - maxLen;
+
+        glm::vec3 correction = dir * (excess / wSum);
+
+        a.position += correction * wA;
+        b.position -= correction * wB;
+    }
 }
 
+
+    // =========================
+    // FAZA 3: KOLIZJE (co 2 klatki)
+    // =========================
+    static int collisionFrameCounter = 0;
+    if (++collisionFrameCounter == 2)
+    {
+        collisionFrameCounter = 0;
+        handleObjectCollisions();
+        handleSelfCollision();
+    }
+
+    // =========================
+    // FAZA 4: PODŁOGA
+    // =========================
+    for (Mass &m : masses)
+    {
+        if (m.position.y >= floorY) continue;
+
+        m.position.y = floorY;
+
+        glm::vec3 v = m.position - m.prevPosition;
+        v.y = -v.y * 0.3f;
+        m.prevPosition = m.position - v;
+    }
+
+    // =========================
+    // FAZA 5: TENSION BREAKING
+    // =========================
+    if (enableTensionBreaking)
+        checkSpringTension();
+
+    // =========================
+    // FAZA 6: ANALIZA
+    // =========================
+    if (trackingMode &&
+        trackedMassIndex >= 0 &&
+        trackedMassIndex < static_cast<int>(masses.size()))
+    {
+        analysis.updateGlobalStats(masses, springs, simulationTime);
+        analysis.recordMassPointData(
+            trackedMassIndex,
+            masses[trackedMassIndex],
+            springs,
+            simulationTime
+        );
+    }
+
+    // =========================
+    // FAZA 7: REBUILD CPU
+    // =========================
     rebuildGraphicsData();
-    rebuildTextureData();
 
+    static int textureCounter = 0;
+    bool rebuildTexture = (++textureCounter == 3);
+    if (rebuildTexture)
+    {
+        textureCounter = 0;
+        rebuildTextureData();
+    }
+
+    // =========================
+    // FAZA 8: GPU UPLOAD
+    // =========================
     glBindBuffer(GL_ARRAY_BUFFER, VBO_masses);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, massesVertices.size() * sizeof(float), massesVertices.data());
+    glBufferSubData(
+        GL_ARRAY_BUFFER,
+        0,
+        massesVertices.size() * sizeof(float),
+        massesVertices.data()
+    );
 
-    if (VAO_lines != 0)
+    if (VAO_lines)
     {
         glBindBuffer(GL_ARRAY_BUFFER, VBO_lines);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, lineVertices.size() * sizeof(float), lineVertices.data());
+        glBufferSubData(
+            GL_ARRAY_BUFFER,
+            0,
+            lineVertices.size() * sizeof(float),
+            lineVertices.data()
+        );
     }
-    
-    if (VAO_texture != 0)
+
+    if (rebuildTexture && VAO_texture)
     {
         glBindBuffer(GL_ARRAY_BUFFER, VBO_texture);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, textureVertices.size() * sizeof(float), textureVertices.data());
+        glBufferSubData(
+            GL_ARRAY_BUFFER,
+            0,
+            textureVertices.size() * sizeof(float),
+            textureVertices.data()
+        );
     }
 }
+
+
 
 void Mass::update(float dt)
 {
     glm::vec3 velocity = position - prevPosition;
     
-    const float damping = 0.99f;
+    const float damping = 0.98f;  // 2% strata energii per frame
     velocity *= damping;
     
     prevPosition = position;
-    position += velocity + acceleration * dt * dt;
-    acceleration = glm::vec3(0.0f, 0.0f, 0.0f);
+    position += velocity + acceleration * (dt * dt);
+    
+    acceleration = glm::vec3(0.0f);
 }
 
 void Mass::applyForce(glm::vec3 &&force)
@@ -1014,54 +1074,49 @@ void Cloth::checkSpringTension()
     
     static std::vector<int> tensionCounter;
     if (tensionCounter.size() != springs.size())
-    {
         tensionCounter.resize(springs.size(), 0);
-    }
     
     std::vector<int> springsToBreak;
-    springsToBreak.reserve(20);
+    springsToBreak.reserve(50);
     
-    const int FRAMES_BEFORE_BREAK = 3;  
+    const int FRAMES_BEFORE_BREAK = 3;
+    const float thresholdSq = tensionBreakThreshold * tensionBreakThreshold;
     
-    for (int i = 0; i < springs.size(); ++i)
+    for (size_t i = 0; i < springs.size(); ++i)
     {
         const Spring& spring = springs[i];
         const Mass& massA = masses[spring.a];
         const Mass& massB = masses[spring.b];
         
-        float currentLength = glm::length(massB.position - massA.position);
+        glm::vec3 diff = massB.position - massA.position;
+        float currentLengthSq = glm::dot(diff, diff);
         
-        if (currentLength < 0.0001f)
+        if (currentLengthSq < 0.0001f)
             continue;
-            
-        float stretchRatio = currentLength / spring.restLength;
         
-        if (stretchRatio > tensionBreakThreshold)
+        float restLengthSq = spring.restLength * spring.restLength;
+        float stretchRatioSq = currentLengthSq / restLengthSq;
+        
+        if (stretchRatioSq > thresholdSq)
         {
             tensionCounter[i]++;
             
             if (tensionCounter[i] >= FRAMES_BEFORE_BREAK)
             {
+                // Zwiększona tolerancja dla przypiętych punktów
                 bool shouldBreak = true;
-                
                 if ((massA.fixed && !massB.fixed) || (!massA.fixed && massB.fixed))
                 {
-                    if (stretchRatio < tensionBreakThreshold * 1.5f)
-                    {
+                    if (stretchRatioSq < thresholdSq * 3.0f)  // 1.73^2 ≈ 3
                         shouldBreak = false;
-                    }
                 }
                 
                 if (shouldBreak)
                 {
                     springsToBreak.push_back(i);
-                    
+                    float stretchRatio = std::sqrt(stretchRatioSq);
                     glm::vec3 breakPos = (massA.position + massB.position) * 0.5f;
                     analysis.recordSpringBreak(i, breakPos, stretchRatio, simulationTime);
-                    
-                    std::cout << "Spring #" << i << " broke! "
-                              << "Stretch: " << stretchRatio << "x "
-                              << "(threshold: " << tensionBreakThreshold << "x)\n";
                 }
             }
         }
@@ -1071,19 +1126,15 @@ void Cloth::checkSpringTension()
         }
     }
     
+    // Usuń sprężyny od tyłu
     if (!springsToBreak.empty())
     {
-        std::cout << "Breaking " << springsToBreak.size() << " springs due to tension\n";
-        
-        for (int i = springsToBreak.size() - 1; i >= 0; --i)
+        for (int i = (int)springsToBreak.size() - 1; i >= 0; --i)
         {
             int springIdx = springsToBreak[i];
             springs.erase(springs.begin() + springIdx);
             tensionCounter.erase(tensionCounter.begin() + springIdx);
         }
-        
-        rebuildGraphicsData();
-        rebuildTextureData();
     }
 }
 
@@ -1135,4 +1186,225 @@ AnalysisDisplayData Cloth::getAnalysisDisplayData() const
     }
     
     return data;
+}
+
+void Cloth::handleSelfCollision()
+{
+    if (!enableSelfCollision)
+        return;
+    
+    // Sprawdzaj co 3 klatki dla wydajności
+    static int frameSkip = 0;
+    if (++frameSkip < 3)
+        return;
+    frameSkip = 0;
+    
+    // Wyłącz dla dużych siatek
+    if (masses.size() > 2000)
+    {
+        enableSelfCollision = false;
+        std::cout << "Self-collision disabled: too many masses\n";
+        return;
+    }
+    
+    const float radius = massCollisionRadius;
+    const float diameter = radius * 2.0f;
+    const float diameterSq = diameter * diameter;
+    
+    // Buduj mapę bezpośrednich sąsiadów (tylko ci nie kolidują)
+    std::vector<std::set<int>> neighbors(masses.size());
+    for (const auto& spring : springs)
+    {
+        neighbors[spring.a].insert(spring.b);
+        neighbors[spring.b].insert(spring.a);
+    }
+    
+    // Sprawdź każdą parę mas
+    int collisions = 0;
+    const int MAX_COLLISIONS = 50;
+    
+    for (int i = 0; i < masses.size() && collisions < MAX_COLLISIONS; i++)
+    {
+        if (masses[i].fixed)
+            continue;
+        
+        for (int j = i + 1; j < masses.size() && collisions < MAX_COLLISIONS; j++)
+        {
+            if (masses[j].fixed)
+                continue;
+            
+            // Pomiń bezpośrednich sąsiadów
+            if (neighbors[i].count(j) > 0)
+                continue;
+            
+            // Sprawdź odległość między środkami kulek
+            glm::vec3 diff = masses[j].position - masses[i].position;
+            float distSq = glm::dot(diff, diff);
+            
+            // Kule się przecinają jeśli odległość < suma promieni (diameter)
+            if (distSq < diameterSq && distSq > 0.00001f)
+            {
+                float dist = std::sqrt(distSq);
+                glm::vec3 normal = diff / dist;
+                
+                // Penetracja = jak głęboko kule weszły w siebie
+                float penetration = diameter - dist;
+                
+                // Wypchaj każdą kulę o połowę penetracji
+                glm::vec3 correction = normal * (penetration * 0.5f);
+                
+                masses[i].position -= correction;
+                masses[j].position += correction;
+                
+                collisions++;
+            }
+        }
+    }
+}
+
+void Cloth::addCollisionObject(std::unique_ptr<Object> obj)
+{
+    collisionObjects.push_back(std::move(obj));
+}
+
+void Cloth::clearCollisionObjects()
+{
+    collisionObjects.clear();
+}
+
+std::vector<Object*> Cloth::getCollisionObjects()
+{
+    std::vector<Object*> result;
+    for (auto& obj : collisionObjects)
+        result.push_back(obj.get());
+    return result;
+}
+
+void Cloth::handleObjectCollisions()
+{
+    for (auto& mass : masses)
+    {
+        if (mass.fixed)
+            continue;
+            
+        for (const auto& obj : collisionObjects)
+        {
+            glm::vec3 correction;
+            if (obj->checkCollision(mass.position, correction))
+            {
+                // KROK 1: Popraw pozycję - wypchaj na powierzchnię
+                mass.position += correction;
+                
+                // KROK 2: Zeruj prędkość w kierunku normalnym (zapobiega drganiom)
+                glm::vec3 velocity = mass.position - mass.prevPosition;
+                glm::vec3 normal = glm::normalize(correction);
+                
+                float normalVelocity = glm::dot(velocity, normal);
+                
+                // Jeśli porusza się w kierunku sfery, odbij z tłumieniem
+                if (normalVelocity < 0.0f)
+                {
+                    // Usuń składową normalną i odwróć ją z tłumieniem
+                    velocity -= normal * normalVelocity * 1.5f;
+                }
+                
+                // BARDZO WAŻNE: Zastosuj silne tłumienie aby zapobiec drganiom
+                mass.prevPosition = mass.position - velocity * 0.2f;
+            }
+        }
+    }
+}
+
+void Cloth::setPinMode(PinMode mode)
+{
+    if (currentPinMode == mode)
+        return;
+        
+    currentPinMode = mode;
+    
+    int pinnedCount = 0;
+    
+    // Odepnij wszystkie punkty
+    for (auto& mass : masses)
+        mass.fixed = false;
+    
+    // Przypnij zgodnie z wybranym trybem
+    switch(mode)
+    {
+        case PinMode::TOP_EDGE:
+            for (int x = 0; x < resX; x++)
+            {
+                int gridIdx = 0 * resX + x;
+                if (gridIdx < massIndexMap.size())
+                {
+                    int massIdx = massIndexMap[gridIdx];
+                    if (massIdx >= 0 && massIdx < masses.size())
+                    {
+                        masses[massIdx].fixed = true;
+                        pinnedCount++;
+                    }
+                }
+            }
+            std::cout << "Pin mode: Full top edge (" << pinnedCount << " points)\n";
+            break;
+            
+        case PinMode::TWO_CORNERS:
+            {
+                int gridIdx = 0 * resX + 0;
+                if (gridIdx < massIndexMap.size())
+                {
+                    int massIdx = massIndexMap[gridIdx];
+                    if (massIdx >= 0 && massIdx < masses.size())
+                    {
+                        masses[massIdx].fixed = true;
+                        pinnedCount++;
+                    }
+                }
+            }
+            {
+                int gridIdx = 0 * resX + (resX - 1);
+                if (gridIdx < massIndexMap.size())
+                {
+                    int massIdx = massIndexMap[gridIdx];
+                    if (massIdx >= 0 && massIdx < masses.size())
+                    {
+                        masses[massIdx].fixed = true;
+                        pinnedCount++;
+                    }
+                }
+            }
+            std::cout << "Pin mode: Two corners (" << pinnedCount << " points)\n";
+            break;
+            
+        case PinMode::CENTER_PIN:
+            // POPRAWKA: Środek całej siatki (środek Y i środek X)
+            {
+                int centerY = resY / 2;
+                int centerX = resX / 2;
+                int gridIdx = centerY * resX + centerX;
+                
+                if (gridIdx < massIndexMap.size())
+                {
+                    int massIdx = massIndexMap[gridIdx];
+                    if (massIdx >= 0 && massIdx < masses.size())
+                    {
+                        masses[massIdx].fixed = true;
+                        pinnedCount++;
+                        std::cout << "Pinned center at grid (" << centerX << ", " << centerY 
+                                  << ") = mass #" << massIdx << "\n";
+                    }
+                }
+            }
+            std::cout << "Pin mode: Center point (" << pinnedCount << " point)\n";
+            break;
+    }
+}
+
+void Cloth::removeCollisionObject(size_t index)
+{
+    if (index < collisionObjects.size())
+    {
+        collisionObjects.erase(collisionObjects.begin() + index);
+        std::cout << "Removed collision object #" << index << "\n";
+    }
 }

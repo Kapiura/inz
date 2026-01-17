@@ -3,10 +3,12 @@
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <vector>
+#include <memory>
 
 #include "Shader.hpp"
 #include "Force.hpp"
 #include "AnalysisData.hpp"
+#include "Object.hpp"
 
 extern bool trackingMode;
 extern int trackedMassIndex;
@@ -60,6 +62,13 @@ class Cloth
     void update(float dt);
     void satisfy();
     void reset();
+
+    enum class PinMode
+    {
+        TOP_EDGE,      // Cała górna krawędź
+        TWO_CORNERS,   // Dwa górne rogi
+        CENTER_PIN     // Środek górnej krawędzi
+    };
 
     int pickMassPoint(const Ray &ray);
     void setMassPosition(int index, const glm::vec3 &position);
@@ -149,6 +158,23 @@ class Cloth
     const ClothAnalysis& getAnalysis() const { return analysis; }
     AnalysisDisplayData getAnalysisDisplayData() const;
 
+    void setSelfCollisionRadius(float radius) { massCollisionRadius = radius; }
+    float getSelfCollisionRadius() const { return massCollisionRadius; }
+    void setEnableSelfCollision(bool enabled) { enableSelfCollision = enabled; }
+    bool getEnableSelfCollision() const { return enableSelfCollision; }
+
+    void addCollisionObject(std::unique_ptr<Object> obj);
+    void clearCollisionObjects();
+    std::vector<Object*> getCollisionObjects();
+
+    void setPinMode(PinMode mode);
+    PinMode getPinMode() const { return currentPinMode; }
+    void removeCollisionObject(size_t index);
+    size_t getCollisionObjectCount() const { return collisionObjects.size(); }
+    
+    void setMaxStretchRatio(float ratio) { maxStretchRatio = ratio; }
+    float getMaxStretchRatio() const { return maxStretchRatio; }
+
   private:
     int resX, resY;
     float width, height;
@@ -188,21 +214,32 @@ class Cloth
     int selectedMassIndex = -1;
     glm::vec3 lastMouseWorldPos;
 
-    float tensionBreakThreshold = 3.5f;  
+    float tensionBreakThreshold = 10.0f;  
     bool enableTensionBreaking = true;
 
     float cutThresholdPixels = 10.0f;
     int solverIterations = 5;
-    float correctionFactor = 0.15f;
-    float maxStretchRatio = 1.2f;
+    float correctionFactor = 0.2f;
 
-    float defaultMass = 0.5f;
+    float defaultMass = 0.3f;
     float defaultStructuralStiffness = 100.0f;
     float defaultStructuralDamping = 1.5f;
     float defaultShearStiffness = 200.0f;
-    float defaultShearDamping = 1.0f;
+    float defaultShearDamping = 1.1f;
     float defaultBendingStiffness = 100.0f;
     float defaultBendingDamping = 0.8f;
+    float maxStretchRatio = 1.2f;
+    float minCompressRatio = 0.9f;
     
     ClothAnalysis analysis;
+
+    float massCollisionRadius = 0.03f;
+    bool enableSelfCollision = false;
+
+    void handleSelfCollision();
+    std::vector<std::unique_ptr<Object>> collisionObjects;
+    void handleObjectCollisions();
+
+    PinMode currentPinMode = PinMode::TOP_EDGE;
+    
 };

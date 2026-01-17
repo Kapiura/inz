@@ -288,40 +288,46 @@ public:
         if (ImGui::CollapsingHeader("Constraint Solver"))
         {
             static int solverIterations = 5;
-            static float correctionFactor = 0.15f;
-            static float maxStretchRatio = 1.2f;
+            static float correctionFactor = 0.2f;
+            static float maxStretchRatio = 1.15f;
             
             ImGui::Text("Solver Settings:");
-            ImGui::SliderInt("Iterations", &solverIterations, 1, 20);
-            ImGui::TextWrapped("More iterations = more stable but slower");
+            ImGui::SliderInt("Iterations", &solverIterations, 1, 15);
+            ImGui::TextWrapped("Lower = less jitter, Higher = more stable");
             
-            ImGui::SliderFloat("Correction Factor", &correctionFactor, 0.01f, 0.5f, "%.3f");
-            ImGui::TextWrapped("How quickly springs correct their length");
+            ImGui::SliderFloat("Correction Factor", &correctionFactor, 0.1f, 0.5f, "%.2f");
+            ImGui::TextWrapped("Lower = softer cloth, less jitter");
             
-            ImGui::SliderFloat("Max Stretch Ratio", &maxStretchRatio, 1.1f, 2.0f, "%.2f");
-            ImGui::TextWrapped("Maximum allowed stretch before hard constraint");
+            ImGui::SliderFloat("Max Stretch", &maxStretchRatio, 1.05f, 1.5f, "%.2f");
+            ImGui::TextWrapped("How much springs can stretch");
             
             cloth->setSolverParameters(solverIterations, correctionFactor, maxStretchRatio);
             
             ImGui::Separator();
             
-            if (ImGui::Button("Stable (10 iter)"))
+            if (ImGui::Button("Stable (5 iter, soft)"))
+            {
+                solverIterations = 5;
+                correctionFactor = 0.2f;
+                maxStretchRatio = 1.15f;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Stiff (10 iter)"))
             {
                 solverIterations = 10;
-                correctionFactor = 0.15f;
+                correctionFactor = 0.3f;
+                maxStretchRatio = 1.08f;
             }
             ImGui::SameLine();
-            if (ImGui::Button("Fast (3 iter)"))
+            if (ImGui::Button("Very Soft"))
             {
                 solverIterations = 3;
-                correctionFactor = 0.25f;
+                correctionFactor = 0.15f;
+                maxStretchRatio = 1.3f;
             }
-            ImGui::SameLine();
-            if (ImGui::Button("Very Stable (15 iter)"))
-            {
-                solverIterations = 15;
-                correctionFactor = 0.1f;
-            }
+            
+            ImGui::Separator();
+            ImGui::TextWrapped("Tip: Lower values = less jitter but softer cloth");
         }
 
         if (ImGui::CollapsingHeader("Lighting"))
@@ -470,7 +476,121 @@ public:
                           << " with " << newResX << "x" << newResY << " masses" << std::endl;
             }
         }
-        
+    
+        if (ImGui::CollapsingHeader("Collision Settings"))
+        {
+            ImGui::Text("Self-Collision (Mass Spheres)");
+            ImGui::Separator();
+            
+            const auto& masses = cloth->getMasses();
+            int massCount = masses.size();
+            
+            bool selfCollision = cloth->getEnableSelfCollision();
+            
+            if (massCount > 2000)
+            {
+                ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), 
+                                  "Too many masses (%d > 2000)", massCount);
+                if (selfCollision)
+                {
+                    cloth->setEnableSelfCollision(false);
+                }
+            }
+            else
+            {
+                if (ImGui::Checkbox("Enable Self-Collision", &selfCollision))
+                {
+                    cloth->setEnableSelfCollision(selfCollision);
+                }
+                
+                if (selfCollision)
+                {
+                    float collisionRadius = cloth->getSelfCollisionRadius();
+                    if (ImGui::SliderFloat("Sphere Radius", &collisionRadius, 0.02f, 0.1f, "%.3f"))
+                    {
+                        cloth->setSelfCollisionRadius(collisionRadius);
+                    }
+                    ImGui::TextWrapped("Each mass has a sphere of this radius");
+                    ImGui::TextWrapped("Neighboring spheres don't collide");
+                    ImGui::Text("Recommended: 0.03 - 0.05");
+                    
+                    if (massCount > 1500)
+                    {
+                        ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.0f, 1.0f), 
+                                          "Warning: May be slow with %d masses", massCount);
+                    }
+                }
+            }
+            
+            ImGui::Separator();
+            ImGui::Text("Sphere Collision");
+            
+            if (ImGui::Button("Add Collision Sphere"))
+            {
+                // Dodaj kulę nad tkaniną
+                auto sphere = std::make_unique<Sphere>(glm::vec3(0.0f, 2.0f, 0.0f), 1.0f);
+                cloth->addCollisionObject(std::move(sphere));
+            }
+            
+            ImGui::SameLine();
+            if (ImGui::Button("Clear All"))
+            {
+                cloth->clearCollisionObjects();
+            }
+            
+            auto objects = cloth->getCollisionObjects();
+            
+            if (!objects.empty())
+            {
+                ImGui::Separator();
+                ImGui::Text("Active Spheres: %zu", objects.size());
+                
+                static int sphereToDelete = -1;
+                
+                for (size_t i = 0; i < objects.size(); i++)
+                {
+                    if (Sphere* sphere = dynamic_cast<Sphere*>(objects[i]))
+                    {
+                        ImGui::PushID(i);
+                        
+                        std::string label = "Sphere #" + std::to_string(i);
+                        if (ImGui::TreeNode(label.c_str()))
+                        {
+                            glm::vec3 pos = sphere->getPosition();
+                            if (ImGui::SliderFloat3("Position", &pos.x, -8.0f, 8.0f))
+                            {
+                                sphere->setPosition(pos);
+                            }
+                            
+                            float radius = sphere->getRadius();
+                            if (ImGui::SliderFloat("Radius", &radius, 0.3f, 4.0f))
+                            {
+                                sphere->setRadius(radius);
+                            }
+                            
+                            ImGui::Text("Visual = Collision radius");
+                            ImGui::Separator();
+                            
+                            if (ImGui::Button("Delete", ImVec2(-1, 0)))
+                            {
+                                sphereToDelete = i;
+                            }
+                            
+                            ImGui::TreePop();
+                        }
+                        
+                        ImGui::PopID();
+                    }
+                }
+                
+                if (sphereToDelete >= 0)
+                {
+                    cloth->removeCollisionObject(sphereToDelete);
+                    sphereToDelete = -1;
+                }
+            }
+        }
+
         if (ImGui::CollapsingHeader("Visibility", ImGuiTreeNodeFlags_DefaultOpen))
         {
             if (ImGui::Button("Toggle Texture (B)"))

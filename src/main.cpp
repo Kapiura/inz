@@ -765,7 +765,10 @@ void processInput(GLFWwindow *window)
 void updateGrabbedMass(GLFWwindow *window)
 {
     if (camera.getCameraBlocked() || !mousePressed)
+    {
+        cuttingPath.clear();  // Wyczyść ścieżkę gdy nie używana
         return;
+    }
 
     Ray ray = createRayFromMouse(window);
     AppData *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
@@ -779,12 +782,19 @@ void updateGrabbedMass(GLFWwindow *window)
     }
     else
     {
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), 
-                                                (float)SCR_WIDTH / (float)SCR_HEIGHT, 
-                                                0.1f, 100.0f);
-        glm::mat4 view = camera.GetViewMatrix();
-        
-        cloth->cutSpringsWithRay(ray, lastMouseWorldPos, view, projection, SCR_WIDTH, SCR_HEIGHT);
+        // Ciecie - rób rzadziej dla lepszej wydajności
+        static int cutFrameCounter = 0;
+        if (++cutFrameCounter >= 1)  // Co klatkę wystarczy
+        {
+            cutFrameCounter = 0;
+            
+            glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), 
+                                                    (float)SCR_WIDTH / (float)SCR_HEIGHT, 
+                                                    0.1f, 100.0f);
+            glm::mat4 view = camera.GetViewMatrix();
+            
+            cloth->cutSpringsWithRay(ray, lastMouseWorldPos, view, projection, SCR_WIDTH, SCR_HEIGHT);
+        }
         
         glm::vec3 planeNormal = glm::vec3(0.0f, 0.0f, 1.0f);
         glm::vec3 planePoint = glm::vec3(0.0f, 2.5f, 0.0f);
@@ -792,8 +802,10 @@ void updateGrabbedMass(GLFWwindow *window)
 
         if (rayPlaneIntersection(ray, planePoint, planeNormal, currentMouseWorldPos))
         {
-            if (cuttingPath.empty() || 
-                glm::length(currentMouseWorldPos - cuttingPath.back()) > 0.1f)
+            float distSq = glm::dot(currentMouseWorldPos - lastMouseWorldPos, 
+                                   currentMouseWorldPos - lastMouseWorldPos);
+            
+            if (cuttingPath.empty() || distSq > 0.01f)  // 0.1^2
             {
                 cuttingPath.push_back(currentMouseWorldPos);
                 
@@ -805,7 +817,6 @@ void updateGrabbedMass(GLFWwindow *window)
         }
     }
 }
-
 void renderCuttingPath(Shader &shader)
 {
     if (cuttingPath.empty())
@@ -938,9 +949,10 @@ void generateSphere(float radius, unsigned int rings, unsigned int sectors)
             float const x = cos(2 * M_PI * s * S) * sin(M_PI * r * R);
             float const z = sin(2 * M_PI * s * S) * sin(M_PI * r * R);
 
-            sphereVertices.push_back(x * radius);
-            sphereVertices.push_back(y * radius);
-            sphereVertices.push_back(z * radius);
+            // Sfera jednostkowa - skalowana przez model matrix
+            sphereVertices.push_back(x);
+            sphereVertices.push_back(y);
+            sphereVertices.push_back(z);
         }
     }
 
@@ -961,7 +973,7 @@ void generateSphere(float radius, unsigned int rings, unsigned int sectors)
 
 void initSpheres()
 {
-    generateSphere(0.3f, 20, 20);
+    generateSphere(1.0f, 30, 30);  // Więcej segmentów dla gładszej kuli
 
     glGenVertexArrays(1, &sphereVAO);
     glGenBuffers(1, &sphereVBO);
@@ -987,11 +999,12 @@ void renderSphere(Shader& shader, const glm::vec3& position, const glm::vec3& co
 {
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, position);
-    model = glm::scale(model, glm::vec3(scale));
+    model = glm::scale(model, glm::vec3(scale));  // Scale faktycznie używa radius
     
     shader.setMat4("model", model);
     shader.setVec3("color", color);
     shader.setInt("useTexture", 0);
+    shader.setInt("useShadows", 0);  // Wyłącz cienie dla sfer kolizyjnych
     
     glBindVertexArray(sphereVAO);
     glDrawElements(GL_TRIANGLES, sphereIndices.size(), GL_UNSIGNED_INT, 0);
@@ -1038,6 +1051,24 @@ void renderForceVisualizations(Shader& shader, Cloth& cloth, const glm::vec3& li
             
             glDeleteBuffers(1, &arrowVBO);
             glDeleteVertexArrays(1, &arrowVAO);
+        }
+    }
+    
+    // Renderuj sfery kolizyjne - POPRAWIONE
+    auto objects = cloth.getCollisionObjects();
+    for (auto* obj : objects)
+    {
+        if (Sphere* sphere = dynamic_cast<Sphere*>(obj))
+        {
+            // Renderuj solid sphere
+            renderSphere(shader, sphere->getPosition(), 
+                        glm::vec3(1.0f, 0.3f, 0.3f), sphere->getRadius());
+            
+            // Renderuj wireframe dla lepszej widoczności
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            renderSphere(shader, sphere->getPosition(), 
+                        glm::vec3(0.0f, 0.0f, 0.0f), sphere->getRadius() * 1.01f);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
     }
 }
