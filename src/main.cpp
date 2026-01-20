@@ -11,6 +11,7 @@
 #include <iostream>
 #include <string>
 #include <limits>
+#include <memory>
 
 #include "Camera.hpp"
 #include "Cloth.hpp"
@@ -18,6 +19,7 @@
 #include "Ray.hpp"
 #include "Skybox.hpp"
 #include "GUI.hpp"
+#include "ExperimentSystem.hpp"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -67,6 +69,7 @@ struct AppData
     Cloth* cloth;
     Skybox* skybox;
     ClothGUI* gui;
+    double fps;
 };
 
 // FORWARD DECLARATIONS
@@ -97,8 +100,29 @@ void setupShadowMap();
 unsigned int floorVAO = 0, floorVBO = 0;
 
 // MAIN
-int main()
+int main(int argc, char** argv)
 {
+    bool experimentMode = false;
+    std::string experimentName = "";
+
+    if(argc > 1)
+    {
+        std::string arg = argv[1];
+        if(arg == "--experiment" or arg == "-e")
+        {
+            experimentMode = true;
+            if(argc > 2)
+            {
+                experimentName = argv[2];
+            }
+        }
+        else if(arg == "--help" or arg == "-h")
+        {
+            std::cout << "help\n";
+            return 0;
+        }
+    }
+
     GLFWwindow *window = initializeWindow();
     if (!window)
         return -1;
@@ -106,9 +130,9 @@ int main()
     Shader shader("../shaders/shader.vs", "../shaders/shader.fs");
     Shader skyboxShader("../shaders/skybox.vs", "../shaders/skybox.fs");
     Shader shadowShader("../shaders/shadow.vs", "../shaders/shadow.fs");
-    
+
     setupShadowMap();
-    
+
     std::vector<std::string> faces = {
         "../img/skybox/right.jpg",
         "../img/skybox/left.jpg",
@@ -118,8 +142,62 @@ int main()
         "../img/skybox/back.jpg"
     };
     Skybox skybox(faces);
-    
-    Cloth cloth(5.0f, 5.0f, 50, 50, -10.0f);
+
+    Cloth cloth(3.0f, 3.0f, 25, 25, -10.0f);
+
+    if(experimentMode)
+    {
+        std::cout << "Welcome to experiment mode\n";
+
+        ExperimentSystem experimentSystem(&cloth);
+
+        if(experimentName == "all")
+        {
+            experimentSystem.runAllExp();
+        }
+        else if(experimentName == "exp1")
+        {
+            experimentSystem.exp1_thresholdImpact();
+        }
+        else if(experimentName == "exp2")
+        {
+            experimentSystem.exp2_windStrength();
+        }
+        else if(experimentName == "exp3")
+        {
+            experimentSystem.exp3_windDirection();
+        }
+        else if(experimentName == "exp4")
+        {
+            experimentSystem.exp4_gravityImpact();
+        }
+        else if(experimentName == "exp5")
+        {
+            experimentSystem.exp5_cascadeBreaking();
+        }
+        else if(experimentName == "exp6")
+        {
+            experimentSystem.exp6_solverStability();
+        }
+        else if(experimentName == "exp7")
+        {
+            experimentSystem.exp7_meshSizePerf();
+        }
+        else if(experimentName == "exp8")
+        {
+            experimentSystem.exp8_springTypes();
+        }
+        else
+        {
+            std::cout << "unknown experiment " << experimentName << "\n";
+            return 1;
+        }
+
+        glfwTerminate();
+        return 0;
+    }
+
+
 
     ClothGUI gui;
     gui.init(window, "#version 330");
@@ -145,7 +223,7 @@ int main()
         -50.0f, -10.0f,  50.0f,  0.0f, 1.0f, 0.0f,  0.0f, 10.0f,
         -50.0f, -10.0f, -50.0f,  0.0f, 1.0f, 0.0f,  0.0f, 0.0f
     };
-    
+
     glGenVertexArrays(1, &floorVAO);
     glGenBuffers(1, &floorVBO);
     glBindVertexArray(floorVAO);
@@ -192,8 +270,8 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         shader.use();
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), 
-                                                (float)SCR_WIDTH / (float)SCR_HEIGHT, 
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom),
+                                                (float)SCR_WIDTH / (float)SCR_HEIGHT,
                                                 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
         glm::mat4 model = glm::mat4(1.0f);
@@ -202,16 +280,16 @@ int main()
         shader.setMat4("view", view);
         shader.setMat4("model", model);
         shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
-        
+
         shader.setVec3("lightPos", lightPos);
         shader.setVec3("viewPos", camera.Position);
         shader.setVec3("lightColor", lightColor);
         shader.setInt("useShadows", 1);
-        
+
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, depthMap);
         shader.setInt("shadowMap", 1);
-        
+
         glActiveTexture(GL_TEXTURE0);
         shader.setInt("clothTexture", 0);
 
@@ -222,7 +300,7 @@ int main()
         skyboxShader.use();
         skybox.draw(skyboxShader, view, projection);
 
-        gui.drawClothControls(&cloth, &camera, &lightPos);
+        gui.drawClothControls(&cloth, &camera, &lightPos, appData.fps);
         gui.render();
 
         glfwSwapBuffers(window);
@@ -234,7 +312,7 @@ int main()
     glDeleteBuffers(1, &floorVBO);
     glDeleteFramebuffers(1, &depthMapFBO);
     glDeleteTextures(1, &depthMap);
-    
+
     glDeleteVertexArrays(1, &sphereVAO);
     glDeleteBuffers(1, &sphereVBO);
     glDeleteBuffers(1, &sphereEBO);
@@ -246,10 +324,10 @@ int main()
 void setupShadowMap()
 {
     glGenFramebuffers(1, &depthMapFBO);
-    
+
     glGenTextures(1, &depthMap);
     glBindTexture(GL_TEXTURE_2D, depthMap);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT,
                  0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -257,7 +335,7 @@ void setupShadowMap()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
     float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
     glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-    
+
     glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
     glDrawBuffer(GL_NONE);
@@ -269,7 +347,7 @@ void renderScene(Shader &shader, Cloth &cloth)
 {
     glm::mat4 model = glm::mat4(1.0f);
     shader.setMat4("model", model);
-    
+
     renderFloor(shader);
     cloth.draw(shader);
 }
@@ -331,7 +409,7 @@ void setupCallbacks(GLFWwindow *window)
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
     ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
-    
+
     if (action != GLFW_PRESS)
         return;
 
@@ -382,32 +460,32 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
             trackedMassIndex = -1;
         }
         break;
-        
+
     case GLFW_KEY_R:
         cloth->reset();
         std::cout << "Cloth reset" << std::endl;
         break;
-        
+
     case GLFW_KEY_M:
         cloth->changeMassesVisible();
         std::cout << "Toggled mass visibility" << std::endl;
         break;
-        
+
     case GLFW_KEY_N:
         cloth->changeSpringsVisible();
         std::cout << "Toggled spring visibility" << std::endl;
         break;
-        
+
     case GLFW_KEY_B:
         cloth->changeTextureVisible();
         std::cout << "Toggled texture visibility" << std::endl;
         break;
-        
+
     case GLFW_KEY_V:
         skybox->toggleVisibility();
         std::cout << "Toggled skybox visibility: " << (skybox->isVisible() ? "ON" : "OFF") << std::endl;
         break;
-        
+
     case GLFW_KEY_C:
         camera.unLockCamera(window);
         firstMouse = true;
@@ -417,7 +495,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
             massSelected = false;
             selectedMassIndex = -1;
         }
-        
+
         if (camera.getCameraBlocked())
         {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -427,7 +505,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         }
         break;
-    
+
     case GLFW_KEY_P:
         if (WindForce* wind = forceManager.getForce<WindForce>())
         {
@@ -435,7 +513,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
             std::cout << "Wind: " << (wind->isEnabled() ? "ON" : "OFF") << std::endl;
         }
         break;
-        
+
     case GLFW_KEY_1:
         if (WindForce* wind = forceManager.getForce<WindForce>())
         {
@@ -443,15 +521,15 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
             std::cout << "Wind direction: RIGHT" << std::endl;
         }
         break;
-        
-    case GLFW_KEY_2: 
+
+    case GLFW_KEY_2:
         if (WindForce* wind = forceManager.getForce<WindForce>())
         {
             wind->setDirection(glm::vec3(-1.0f, 0.0f, 0.0f));
             std::cout << "Wind direction: LEFT" << std::endl;
         }
         break;
-        
+
     case GLFW_KEY_3:
         if (WindForce* wind = forceManager.getForce<WindForce>())
         {
@@ -459,7 +537,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
             std::cout << "Wind direction: FORWARD" << std::endl;
         }
         break;
-        
+
     case GLFW_KEY_4:
         if (WindForce* wind = forceManager.getForce<WindForce>())
         {
@@ -467,7 +545,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
             std::cout << "Wind direction: BACKWARD" << std::endl;
         }
         break;
-        
+
     case GLFW_KEY_5:
         if (WindForce* wind = forceManager.getForce<WindForce>())
         {
@@ -475,7 +553,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
             std::cout << "Wind direction: UP" << std::endl;
         }
         break;
-        
+
     case GLFW_KEY_EQUAL:
         if (WindForce* wind = forceManager.getForce<WindForce>())
         {
@@ -484,8 +562,8 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
             std::cout << "Wind strength: " << newStrength << std::endl;
         }
         break;
-        
-    case GLFW_KEY_MINUS: 
+
+    case GLFW_KEY_MINUS:
         if (WindForce* wind = forceManager.getForce<WindForce>())
         {
             float newStrength = glm::max(wind->getStrength() - 1.0f, 0.0f);
@@ -493,23 +571,23 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
             std::cout << "Wind strength: " << newStrength << std::endl;
         }
         break;
-    
-    case GLFW_KEY_G: 
+
+    case GLFW_KEY_G:
         if (GravityForce* gravity = forceManager.getForce<GravityForce>())
         {
             gravity->setEnabled(!gravity->isEnabled());
             std::cout << "Gravity: " << (gravity->isEnabled() ? "ON" : "OFF") << std::endl;
         }
         break;
-        
+
     case GLFW_KEY_O:
         {
             if (forceManager.getForce<OscillatingForce>() == nullptr)
             {
                 OscillatingForce* oscillating = forceManager.addForce<OscillatingForce>(
-                    glm::vec3(1.0f, 0.0f, 0.0f), 
+                    glm::vec3(1.0f, 0.0f, 0.0f),
                     3.0f,
-                    2.0f 
+                    2.0f
                 );
                 oscillating->setEnabled(true);
                 std::cout << "Oscillating force ADDED" << std::endl;
@@ -535,7 +613,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         }
         break;
 
-    case GLFW_KEY_LEFT_BRACKET: 
+    case GLFW_KEY_LEFT_BRACKET:
         {
             float threshold = cloth->getTensionBreakThreshold();
             threshold = glm::max(threshold - 0.2f, 2.0f);
@@ -544,7 +622,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         }
         break;
 
-    case GLFW_KEY_RIGHT_BRACKET: 
+    case GLFW_KEY_RIGHT_BRACKET:
         {
             float threshold = cloth->getTensionBreakThreshold();
             threshold = glm::min(threshold + 0.2f, 10.0f);
@@ -563,21 +641,21 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         std::cout << "V - Toggle skybox\n";
         std::cout << "C - Toggle camera lock\n";
         std::cout << "ESC - Exit\n";
-        
+
         std::cout << "\n--- Wind ---\n";
         std::cout << "P - Toggle wind\n";
         std::cout << "1/2/3/4/5 - Wind direction\n";
         std::cout << "+/- - Wind strength\n";
-        
+
         std::cout << "\n--- Forces ---\n";
         std::cout << "G - Toggle gravity\n";
         std::cout << "O - Toggle oscillation\n";
-        
+
         std::cout << "\n--- Tension Breaking ---\n";
         std::cout << "T - Toggle tension breaking\n";
         std::cout << "[ - Decrease break threshold\n";
         std::cout << "] - Increase break threshold\n";
-        
+
         std::cout << "\n--- Camera ---\n";
         std::cout << "W/A/S/D - Move\n";
         std::cout << "Space/Shift - Up/Down\n";
@@ -589,11 +667,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         std::cout << "Click again - Deselect point\n";
         std::cout << "X - Toggle tracking mode\n";
         std::cout << "ESC - Cancel tracking\n";
-        
+
         std::cout << "\n--- Info ---\n";
         std::cout << "H - Show this help\n";
         std::cout << "==============================\n\n";
-        
+
         break;
     }
 }
@@ -602,7 +680,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
 {
     ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
-    
+
     ImGuiIO& io = ImGui::GetIO();
     if (io.WantCaptureMouse)
         return;
@@ -655,7 +733,7 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
             cuttingPath.clear();
         }
     }
-    
+
     else if (button == GLFW_MOUSE_BUTTON_RIGHT)
     {
         if (action == GLFW_PRESS)
@@ -664,9 +742,9 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
                 return;
 
             Ray ray = createRayFromMouse(window);
-            
+
             int clickedIndex = cloth->pickMassPoint(ray);
-            
+
             if (clickedIndex != -1)
             {
                 if (trackedMassIndex == clickedIndex && trackingMode)
@@ -680,7 +758,7 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
                 {
                     trackingMode = true;
                     trackedMassIndex = clickedIndex;
-                    
+
                     cloth->getAnalysis().setRecordingEnabled(true);
                     std::cout << "Tracking enabled for point #" << trackedMassIndex << " (analysis mode)\n";
                     std::cout << "Right-click again on the same point to deselect\n";
@@ -697,11 +775,11 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
 void mouseCallback(GLFWwindow *window, double xposIn, double yposIn)
 {
     ImGui_ImplGlfw_CursorPosCallback(window, xposIn, yposIn);
-    
+
     ImGuiIO& io = ImGui::GetIO();
     if (io.WantCaptureMouse)
         return;
-    
+
     if (!camera.getCameraBlocked())
         return;
 
@@ -728,11 +806,11 @@ void mouseCallback(GLFWwindow *window, double xposIn, double yposIn)
 void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
 {
     ImGui_ImplGlfw_ScrollCallback(window, xoffset, yoffset);
-    
+
     ImGuiIO& io = ImGui::GetIO();
     if (io.WantCaptureMouse)
         return;
-    
+
     camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
@@ -779,28 +857,28 @@ void updateGrabbedMass(GLFWwindow *window)
     }
     else
     {
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), 
-                                                (float)SCR_WIDTH / (float)SCR_HEIGHT, 
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom),
+                                                (float)SCR_WIDTH / (float)SCR_HEIGHT,
                                                 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
-        
+
         cloth->cutSpringsWithRay(ray, lastMouseWorldPos, view, projection, SCR_WIDTH, SCR_HEIGHT);
-        
+
         glm::vec3 planeNormal = glm::vec3(0.0f, 0.0f, 1.0f);
         glm::vec3 planePoint = glm::vec3(0.0f, 2.5f, 0.0f);
         glm::vec3 currentMouseWorldPos;
 
         if (rayPlaneIntersection(ray, planePoint, planeNormal, currentMouseWorldPos))
         {
-            if (cuttingPath.empty() || 
+            if (cuttingPath.empty() ||
                 glm::length(currentMouseWorldPos - cuttingPath.back()) > 0.1f)
             {
                 cuttingPath.push_back(currentMouseWorldPos);
-                
+
                 if (cuttingPath.size() > MAX_PATH_POINTS)
                     cuttingPath.erase(cuttingPath.begin());
             }
-            
+
             lastMouseWorldPos = currentMouseWorldPos;
         }
     }
@@ -813,7 +891,7 @@ void renderCuttingPath(Shader &shader)
 
     glm::mat4 model = glm::mat4(1.0f);
     shader.setMat4("model", model);
-    
+
     shader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
     shader.setInt("useTexture", 0);
     shader.setInt("useShadows", 0);
@@ -821,34 +899,34 @@ void renderCuttingPath(Shader &shader)
     if (cuttingPath.size() == 1)
     {
         glPointSize(20.0f);
-        
+
         std::vector<float> pointVertex = {
             cuttingPath[0].x,
             cuttingPath[0].y,
             cuttingPath[0].z
         };
-        
+
         GLuint pointVAO, pointVBO;
         glGenVertexArrays(1, &pointVAO);
         glGenBuffers(1, &pointVBO);
-        
+
         glBindVertexArray(pointVAO);
         glBindBuffer(GL_ARRAY_BUFFER, pointVBO);
-        glBufferData(GL_ARRAY_BUFFER, pointVertex.size() * sizeof(float), 
+        glBufferData(GL_ARRAY_BUFFER, pointVertex.size() * sizeof(float),
                      pointVertex.data(), GL_STATIC_DRAW);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
         glEnableVertexAttribArray(0);
-        
+
         glDrawArrays(GL_POINTS, 0, 1);
-        
+
         glDeleteBuffers(1, &pointVBO);
         glDeleteVertexArrays(1, &pointVAO);
         glPointSize(1.0f);
-        
+
         return;
     }
 
-    glLineWidth(8.0f); 
+    glLineWidth(8.0f);
 
     std::vector<float> pathVertices;
     pathVertices.reserve(cuttingPath.size() * 3);
@@ -866,11 +944,11 @@ void renderCuttingPath(Shader &shader)
 
     glBindVertexArray(pathVAO);
     glBindBuffer(GL_ARRAY_BUFFER, pathVBO);
-    glBufferData(GL_ARRAY_BUFFER, pathVertices.size() * sizeof(float), 
+    glBufferData(GL_ARRAY_BUFFER, pathVertices.size() * sizeof(float),
                  pathVertices.data(), GL_STATIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
-    
+
     glDrawArrays(GL_LINE_STRIP, 0, pathVertices.size() / 3);
 
     glDeleteBuffers(1, &pathVBO);
@@ -970,11 +1048,11 @@ void initSpheres()
     glBindVertexArray(sphereVAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
-    glBufferData(GL_ARRAY_BUFFER, sphereVertices.size() * sizeof(float), 
+    glBufferData(GL_ARRAY_BUFFER, sphereVertices.size() * sizeof(float),
                  sphereVertices.data(), GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sphereIndices.size() * sizeof(unsigned int), 
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sphereIndices.size() * sizeof(unsigned int),
                  sphereIndices.data(), GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
@@ -988,11 +1066,11 @@ void renderSphere(Shader& shader, const glm::vec3& position, const glm::vec3& co
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, position);
     model = glm::scale(model, glm::vec3(scale));
-    
+
     shader.setMat4("model", model);
     shader.setVec3("color", color);
     shader.setInt("useTexture", 0);
-    
+
     glBindVertexArray(sphereVAO);
     glDrawElements(GL_TRIANGLES, sphereIndices.size(), GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
@@ -1001,9 +1079,9 @@ void renderSphere(Shader& shader, const glm::vec3& position, const glm::vec3& co
 void renderForceVisualizations(Shader& shader, Cloth& cloth, const glm::vec3& lightPos)
 {
     ForceManager& fm = cloth.getForceManager();
-    
+
     renderSphere(shader, lightPos, glm::vec3(1.0f, 1.0f, 0.0f), 0.3f);
-    
+
     if (WindForce* wind = fm.getForce<WindForce>())
     {
         if (wind->isEnabled())
@@ -1011,31 +1089,31 @@ void renderForceVisualizations(Shader& shader, Cloth& cloth, const glm::vec3& li
             glm::vec3 windPos = glm::vec3(0.0f, 5.0f, 0.0f);
             glm::vec3 windDir = wind->getDirection();
             float strength = wind->getStrength();
-            
+
             renderSphere(shader, windPos, glm::vec3(0.3f, 0.7f, 1.0f), 0.3f + strength * 0.02f);
-            
+
             std::vector<float> arrowVertices = {
                 windPos.x, windPos.y, windPos.z,
-                windPos.x + windDir.x * 2.0f, 
-                windPos.y + windDir.y * 2.0f, 
+                windPos.x + windDir.x * 2.0f,
+                windPos.y + windDir.y * 2.0f,
                 windPos.z + windDir.z * 2.0f
             };
-            
+
             GLuint arrowVAO, arrowVBO;
             glGenVertexArrays(1, &arrowVAO);
             glGenBuffers(1, &arrowVBO);
             glBindVertexArray(arrowVAO);
             glBindBuffer(GL_ARRAY_BUFFER, arrowVBO);
-            glBufferData(GL_ARRAY_BUFFER, arrowVertices.size() * sizeof(float), 
+            glBufferData(GL_ARRAY_BUFFER, arrowVertices.size() * sizeof(float),
                         arrowVertices.data(), GL_STATIC_DRAW);
             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
             glEnableVertexAttribArray(0);
-            
+
             shader.setVec3("color", glm::vec3(0.3f, 0.7f, 1.0f));
             glLineWidth(3.0f);
             glDrawArrays(GL_LINES, 0, 2);
             glLineWidth(1.0f);
-            
+
             glDeleteBuffers(1, &arrowVBO);
             glDeleteVertexArrays(1, &arrowVAO);
         }

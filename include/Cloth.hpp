@@ -29,7 +29,7 @@ struct Mass
     AABB getAABB() const;
 
     Mass(const glm::vec3 &pos, float m, bool fix = false, const glm::vec2 &tc = glm::vec2(0.0f))
-        : position(pos), prevPosition(pos), velocity(0.0f), acceleration(0.0f), 
+        : position(pos), prevPosition(pos), velocity(0.0f), acceleration(0.0f),
           force(0.0f), normal(0.0f, 0.0f, 1.0f), mass(m), fixed(fix), texCoord(tc)
     {
     }
@@ -66,7 +66,7 @@ class Cloth
     void releaseMassPoint(int index);
 
     void checkTearingAroundPoint(int massIndex);
-    void cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos, 
+    void cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos,
                        const glm::mat4 &view, const glm::mat4 &projection,
                        int screenWidth, int screenHeight);
     void calculateNormals();
@@ -107,18 +107,18 @@ class Cloth
     {
         return height;
     }
-    
+
     ForceManager& getForceManager() { return forceManager; }
     const ForceManager& getForceManager() const { return forceManager; }
 
     void checkSpringTension();
-    
+
     float getTensionBreaking() const { return tensionBreakThreshold; }
     void setTensionBreaking(float threshold) { tensionBreakThreshold = threshold; }
-    
+
     float getTensionBreakThreshold() const { return tensionBreakThreshold; }
     void setTensionBreakThreshold(float threshold) { tensionBreakThreshold = threshold; }
-    
+
     bool getEnableTensionBreaking() const { return enableTensionBreaking; }
     void setEnableTensionBreaking(bool enabled) { enableTensionBreaking = enabled; }
 
@@ -144,7 +144,7 @@ class Cloth
         correctionFactor = correction;
         maxStretchRatio = maxStretch;
     }
-    
+
     ClothAnalysis& getAnalysis() { return analysis; }
     const ClothAnalysis& getAnalysis() const { return analysis; }
     AnalysisDisplayData getAnalysisDisplayData() const;
@@ -181,15 +181,15 @@ class Cloth
     unsigned int textureID = 0;
 
     float floorY = 0.0f;
-    
+
     ForceManager forceManager;
     float simulationTime = 0.0f;
 
     int selectedMassIndex = -1;
     glm::vec3 lastMouseWorldPos;
 
-    float tensionBreakThreshold = 3.5f;  
-    bool enableTensionBreaking = true;
+    float tensionBreakThreshold = 3.5f;
+    bool enableTensionBreaking = false;
 
     float cutThresholdPixels = 10.0f;
     int solverIterations = 5;
@@ -203,6 +203,6 @@ class Cloth
     float defaultShearDamping = 1.0f;
     float defaultBendingStiffness = 100.0f;
     float defaultBendingDamping = 0.8f;
-    
+
     ClothAnalysis analysis;
 };
