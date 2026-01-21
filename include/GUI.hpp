@@ -105,14 +105,6 @@ public:
             else
                 ImGui::TextColored(ImVec4(0.5f,0.5f,0.5f,1), "[OFF]");
 
-            if (ImGui::Button("Event Log", ImVec2(150, 0)))
-                showEventLog = !showEventLog;
-            ImGui::SameLine();
-            if (showEventLog)
-                ImGui::TextColored(ImVec4(0,1,0,1), "[ON]");
-            else
-                ImGui::TextColored(ImVec4(0.5f,0.5f,0.5f,1), "[OFF]");
-
             ImGui::Separator();
 
             ClothAnalysis& analysis = cloth->getAnalysis();
