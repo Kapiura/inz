@@ -52,8 +52,9 @@ private:
     Cloth* cloth;
     ExperimentLogger logger;
 
-    FrameData collectFrameData(float time);
+    FrameData collectFrameData(float time, double fps);
     void runSimulation(int runNumber, float duration, int logInterval);
+    
 public:
     ExperimentSystem(Cloth* clothPtr);
     void exp1_thresholdImpact();
