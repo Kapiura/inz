@@ -18,7 +18,6 @@ struct Mass
 {
     glm::vec3 position;
     glm::vec3 prevPosition;
-    glm::vec3 velocity;
     glm::vec3 acceleration;
     glm::vec3 force;
     glm::vec3 normal;
@@ -29,13 +28,13 @@ struct Mass
     AABB getAABB() const;
 
     Mass(const glm::vec3 &pos, float m, bool fix = false, const glm::vec2 &tc = glm::vec2(0.0f))
-        : position(pos), prevPosition(pos), velocity(0.0f), acceleration(0.0f),
+        : position(pos), prevPosition(pos), acceleration(0.0f),
           force(0.0f), normal(0.0f, 0.0f, 1.0f), mass(m), fixed(fix), texCoord(tc)
     {
     }
 
     void update(float dt);
-    void applyForce(glm::vec3 &&force);
+    void applyForce(const glm::vec3 &force);
 };
 
 struct Spring
@@ -159,6 +158,7 @@ class Cloth
     bool springIntersectsSegment(const Spring &spring, const glm::vec3 &segmentStart, const glm::vec3 &segmentEnd,
                                  glm::vec3 &intersectionPoint);
     void initCloth();
+    void cleanupBuffers();
 
     bool areSpringMidpointsConnected(int springA, int springB) const;
 

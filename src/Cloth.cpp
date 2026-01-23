@@ -635,15 +635,20 @@ void Cloth::update(float dt)
     
     forceManager.update(dt);
     
-    for (auto &mass : masses)
+    for (auto& mass : masses)
     {
         if (!mass.fixed)
         {
-            glm::vec3 totalForce = forceManager.calculateTotalForce(mass, simulationTime);
-            mass.applyForce(std::move(totalForce));
+            glm::vec3 totalForce =
+                forceManager.calculateTotalForce(mass, simulationTime);
+
+            mass.applyForce(totalForce);
         }
+
         mass.update(dt);
-    }
+    }   
+
+
     
     for (int iter = 0; iter < solverIterations; ++iter)
     {
@@ -690,8 +695,7 @@ void Cloth::update(float dt)
         if (mass.position.y < floorY)
         {
             mass.position.y = floorY;
-            glm::vec3 velocity = mass.position - mass.prevPosition;
-            mass.prevPosition = mass.position - velocity * 0.3f;
+            mass.prevPosition = mass.position;
         }
     }
 
@@ -735,20 +739,28 @@ void Cloth::update(float dt)
 
 void Mass::update(float dt)
 {
-    glm::vec3 velocity = position - prevPosition;
-    
-    const float damping = 0.99f;
-    velocity *= damping;
-    
-    prevPosition = position;
-    position += velocity + acceleration * dt * dt;
-    acceleration = glm::vec3(0.0f, 0.0f, 0.0f);
+    if (fixed)
+    {
+        force = glm::vec3(0.0f);
+        return;
+    }
+
+    glm::vec3 acceleration = force / mass;
+
+    glm::vec3 currentPosition = position;
+    position = position
+             + (position - prevPosition)
+             + acceleration * (dt * dt);
+    prevPosition = currentPosition;
+
+    force = glm::vec3(0.0f);
 }
 
-void Mass::applyForce(glm::vec3 &&force)
+void Mass::applyForce(const glm::vec3& force)
 {
-    acceleration += force / mass;
+    this->force += force;
 }
+
 
 int Cloth::pickMassPoint(const Ray &ray)
 {
@@ -790,8 +802,6 @@ void Cloth::setMassPosition(int index, const glm::vec3 &position)
         clampedPos.y = glm::max(clampedPos.y, floorY);
 
         masses[index].position = clampedPos;
-        masses[index].velocity = glm::vec3(0.0f);
-
         checkTearingAroundPoint(index);
     }
 }
@@ -868,6 +878,35 @@ bool Cloth::springIntersectsSegment(const Spring &spring, const glm::vec3 &segme
     return false;
 }
 
+void Cloth::cleanupBuffers()
+{
+    if (VAO_masses != 0)
+    {
+        glDeleteVertexArrays(1, &VAO_masses);
+        glDeleteBuffers(1, &VBO_masses);
+        VAO_masses = 0;
+        VBO_masses = 0;
+    }
+    
+    if (VAO_lines != 0)
+    {
+        glDeleteVertexArrays(1, &VAO_lines);
+        glDeleteBuffers(1, &VBO_lines);
+        VAO_lines = 0;
+        VBO_lines = 0;
+    }
+    
+    if (VAO_texture != 0)
+    {
+        glDeleteVertexArrays(1, &VAO_texture);
+        glDeleteBuffers(1, &VBO_texture);
+        glDeleteBuffers(1, &EBO_texture);
+        VAO_texture = 0;
+        VBO_texture = 0;
+        EBO_texture = 0;
+    }
+}
+
 void Cloth::resize(float newWidth, float newHeight, int newResX, int newResY)
 {
     width = newWidth;
@@ -875,6 +914,7 @@ void Cloth::resize(float newWidth, float newHeight, int newResX, int newResY)
     resX = newResX;
     resY = newResY;
     
+    cleanupBuffers(); 
     initCloth();
     
     std::cout << "Cloth resized to " << width << "x" << height 
