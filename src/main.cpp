@@ -12,6 +12,7 @@
 #include <string>
 #include <limits>
 #include <memory>
+#include <array>
 
 #include "Camera.hpp"
 #include "Cloth.hpp"
@@ -20,6 +21,7 @@
 #include "Skybox.hpp"
 #include "GUI.hpp"
 #include "ExperimentSystem.hpp"
+#include "AppData.hpp"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -53,6 +55,7 @@ bool massSelected = false;
 int selectedMassIndex = -1;
 glm::vec3 lastMouseWorldPos(0.0f);
 float interactionDistance = 10.0f;
+bool cubeEnabled = true;
 
 std::vector<glm::vec3> cuttingPath;
 const int MAX_PATH_POINTS = 100;
@@ -63,14 +66,6 @@ glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
 const unsigned int SHADOW_WIDTH = 2048, SHADOW_HEIGHT = 2048;
 unsigned int depthMapFBO;
 unsigned int depthMap;
-
-struct AppData
-{
-    Cloth* cloth;
-    Skybox* skybox;
-    ClothGUI* gui;
-    double fps;
-};
 
 // FORWARD DECLARATIONS
 void framebufferSizeCallback(GLFWwindow *window, int width, int height);
@@ -143,7 +138,10 @@ int main(int argc, char** argv)
     };
     Skybox skybox(faces);
 
-    Cloth cloth(3.0f, 3.0f, 25, 25, -10.0f);
+    Cloth cloth(4.0f, 4.0f, 30, 30, -10.0f);
+
+    Cube* cube = new Cube (glm::vec3(0, -2, 0), glm::vec3(2, 2, 2), "../img/textures/krem.png");
+    cloth.addCollisionObject(cube);
 
     if(experimentMode)
     {
@@ -197,8 +195,6 @@ int main(int argc, char** argv)
         return 0;
     }
 
-
-
     ClothGUI gui;
     gui.init(window, "#version 330");
 
@@ -206,6 +202,11 @@ int main(int argc, char** argv)
     appData.cloth = &cloth;
     appData.skybox = &skybox;
     appData.gui = &gui;
+    appData.camera = &camera;
+    appData.lightPos = &lightPos;
+    appData.cube = cube;
+    appData.cubeEnabled = &cubeEnabled;
+    appData.fps = 0.0;
 
     glfwSetWindowUserPointer(window, &appData);
     setupCallbacks(window);
@@ -238,7 +239,7 @@ int main(int argc, char** argv)
 
     initSpheres();
 
-    while (!glfwWindowShouldClose(window))
+   while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
 
@@ -247,7 +248,8 @@ int main(int argc, char** argv)
         lastFrame = currentFrame;
 
         processInput(window);
-        cloth.update(deltaTime);
+        float clampedDt = glm::min(deltaTime, 0.016f);
+        cloth.update(clampedDt);
         updateGrabbedMass(window);
 
         gui.beginFrame();
@@ -263,6 +265,12 @@ int main(int argc, char** argv)
         glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
         glClear(GL_DEPTH_BUFFER_BIT);
         renderScene(shadowShader, cloth);
+        
+        if (cubeEnabled)
+{
+    cube->render(shadowShader);
+}
+        
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
@@ -294,18 +302,26 @@ int main(int argc, char** argv)
         shader.setInt("clothTexture", 0);
 
         renderScene(shader, cloth);
+        
+        if (cubeEnabled)
+{
+    cube->render(shader);
+}
+        
         renderForceVisualizations(shader, cloth, lightPos);
         renderCuttingPath(shader);
 
         skyboxShader.use();
         skybox.draw(skyboxShader, view, projection);
 
-        gui.drawClothControls(&cloth, &camera, &lightPos, appData.fps);
+        gui.drawClothControls(&appData);
         gui.render();
 
         glfwSwapBuffers(window);
     }
 
+    delete cube;
+    cloth.clearCollisionObjects();
     gui.shutdown();
 
     glDeleteVertexArrays(1, &floorVAO);
@@ -465,15 +481,29 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         cloth->reset();
         std::cout << "Cloth reset" << std::endl;
         break;
-
+    case GLFW_KEY_V:
+        cloth->setOrientation(Cloth::ClothOrientation::VERTICAL);
+        break;
+    case GLFW_KEY_H:
+        cloth->setOrientation(Cloth::ClothOrientation::HORIZONTAL);
+        break;
     case GLFW_KEY_M:
         cloth->changeMassesVisible();
         std::cout << "Toggled mass visibility" << std::endl;
         break;
 
+    case GLFW_KEY_F:
+        cloth->freeCloth();
+        break;
+
     case GLFW_KEY_N:
         cloth->changeSpringsVisible();
         std::cout << "Toggled spring visibility" << std::endl;
+        break;
+    case GLFW_KEY_U:
+        cubeEnabled = !cubeEnabled;
+        cloth->setEnableCollisions(cubeEnabled);
+        std::cout << "Cube " << (cubeEnabled ? "enabled" : "disabled") << std::endl;
         break;
 
     case GLFW_KEY_B:
@@ -481,7 +511,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         std::cout << "Toggled texture visibility" << std::endl;
         break;
 
-    case GLFW_KEY_V:
+    case GLFW_KEY_Z:
         skybox->toggleVisibility();
         std::cout << "Toggled skybox visibility: " << (skybox->isVisible() ? "ON" : "OFF") << std::endl;
         break;
@@ -631,7 +661,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         }
         break;
 
-    case GLFW_KEY_H:
+    case GLFW_KEY_SLASH:
         std::cout << "\n========== CONTROLS ==========\n";
         std::cout << "\n--- Basic ---\n";
         std::cout << "R - Reset cloth\n";

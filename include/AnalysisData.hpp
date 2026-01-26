@@ -11,14 +11,16 @@ struct Spring;
 
 struct MassPointData
 {
+    int connectedSprings;
+    
     float time;
+    float kineticEnergy;
+    float averageSpringTension;
+
     glm::vec3 position;
     glm::vec3 velocity;
     glm::vec3 acceleration;
     glm::vec3 totalForce;
-    float kineticEnergy;
-    float averageSpringTension;
-    int connectedSprings;
     
     MassPointData() 
         : time(0.0f), position(0.0f), velocity(0.0f), 
@@ -30,9 +32,9 @@ struct MassPointData
 struct SpringBreakEvent
 {
     float time;
+    float tension;
     int springIndex;
     glm::vec3 position;
-    float tension;
     
     SpringBreakEvent(float t, int idx, const glm::vec3& pos, float tens)
         : time(t), springIndex(idx), position(pos), tension(tens) {}
@@ -79,44 +81,46 @@ public:
     
 private:
     std::deque<MassPointData> historyData;
-    size_t maxHistorySize;
-    
     std::vector<SpringBreakEvent> breakEvents;
-    int totalBrokenSprings;
+    std::chrono::steady_clock::time_point startTime;
     
     float totalEnergy;
     float averageTension;
     float maxTension;
+    
     glm::vec3 minBounds;
     glm::vec3 maxBounds;
     
+    size_t maxHistorySize;
     bool isRecording;
+
+    int totalBrokenSprings;
     int recordedMassIndex;
-    
-    std::chrono::steady_clock::time_point startTime;
 };
 
 struct AnalysisDisplayData
 {
-    int selectedMassIndex;
     glm::vec3 position;
     glm::vec3 velocity;
-    float speed;
     glm::vec3 acceleration;
-    float kineticEnergy;
-    int connectedSprings;
-    float averageTension;
     
+    float speed;
+    float maxTension;
     float totalEnergy;
+    float kineticEnergy;
+    float averageTension;
     float averageSystemTension;
+    
     int totalSprings;
     int brokenSprings;
-    float maxTension;
+    int connectedSprings;
+    int selectedMassIndex;
+    
     
     std::vector<float> timeHistory;
-    std::vector<float> velocityHistory;
     std::vector<float> energyHistory;
     std::vector<float> tensionHistory;
+    std::vector<float> velocityHistory;
     
     AnalysisDisplayData() 
         : selectedMassIndex(-1), position(0.0f), velocity(0.0f), 

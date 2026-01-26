@@ -18,19 +18,20 @@ enum Camera_Movement
 class Camera
 {
   public:
-    glm::vec3 Position;
-    glm::vec3 Front;
+
     glm::vec3 Up;
+    glm::vec3 Front;
     glm::vec3 Right;
     glm::vec3 WorldUp;
+    glm::vec3 Position;
 
     float Yaw;
     float Pitch;
 
-    float MovementSpeed;
-    float MouseSensitivity;
     float Zoom;
     float cameraBlocked = false;
+    float MovementSpeed;
+    float MouseSensitivity;
 
     Camera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f),
            float yaw = -90.0f, float pitch = 0.0f);
@@ -39,19 +40,13 @@ class Camera
 
     glm::mat4 GetViewMatrix();
 
-    void ProcessKeyboard(int direction, float deltaTime);
-    void ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch = true);
-    void ProcessMouseScroll(float yoffset);
     void unLockCamera(GLFWwindow *window);
-    void setLockCamera(bool flag)
-    {
-        cameraBlocked = flag;
-    }
-
-    bool getCameraBlocked()
-    {
-        return cameraBlocked;
-    };
+    void setLockCamera(bool flag) { cameraBlocked = flag; }
+    void ProcessKeyboard(int direction, float deltaTime);
+    void ProcessMouseScroll(float yoffset);
+    void ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch = true);
+    
+    bool getCameraBlocked() { return cameraBlocked; };
 
   private:
     void updateCameraVectors();

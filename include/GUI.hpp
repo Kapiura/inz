@@ -5,6 +5,7 @@
 #include <imgui_impl_opengl3.h>
 #include "Cloth.hpp"
 #include "Camera.hpp"
+#include "AppData.hpp"
 #include "Force.hpp"
 #include "AnalysisData.hpp"
 #include <glm/glm.hpp>
@@ -64,25 +65,58 @@ public:
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
 
-    void drawClothControls(Cloth* cloth, Camera* camera, glm::vec3* lightPos, double& fps)
+void drawClothControls(AppData* appData)
+{
+    Cloth* cloth = appData->cloth;
+    Camera* camera = appData->camera;
+    glm::vec3* lightPos = appData->lightPos;
+    bool* cubeEnabled = appData->cubeEnabled;
+    
+    if (camera->getCameraBlocked())
+        return;
+
+    ImGui::Begin("Cloth Simulation Controls", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    appData->fps = ImGui::GetIO().Framerate;
+
+    if (ImGui::CollapsingHeader("Simulation Info", ImGuiTreeNodeFlags_DefaultOpen))
     {
+        ImGui::Text("Masses: %zu", cloth->getMasses().size());
+        ImGui::Text("FPS: %.1f", appData->fps);
+        ImGui::Text("Camera Blocked: %s", camera->getCameraBlocked() ? "YES (FPS Mode)" : "NO (GUI Mode)");
+
         if (camera->getCameraBlocked())
-            return;
-
-        ImGui::Begin("Cloth Simulation Controls", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        fps = ImGui::GetIO().Framerate;
-
-        if (ImGui::CollapsingHeader("Simulation Info", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            ImGui::Text("Masses: %zu", cloth->getMasses().size());
-            ImGui::Text("FPS: %.1f", fps);
-            ImGui::Text("Camera Blocked: %s", camera->getCameraBlocked() ? "YES (FPS Mode)" : "NO (GUI Mode)");
-
-            if (camera->getCameraBlocked())
-            {
-                ImGui::TextColored(ImVec4(1,1,0,1), "Press C to unlock camera for GUI!");
-            }
+            ImGui::TextColored(ImVec4(1,1,0,1), "Press C to unlock camera for GUI!");
         }
+    }
+
+if (ImGui::CollapsingHeader("Collision Objects", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::Text("Scene Objects");
+        ImGui::Separator();
+        
+        if (ImGui::Checkbox("Enable Cube (U)", cubeEnabled))
+        {
+            cloth->setEnableCollisions(*cubeEnabled);
+            std::cout << "Cube " << (*cubeEnabled ? "enabled" : "disabled") 
+                     << std::endl;
+        }
+        
+        if (*cubeEnabled)
+        {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "● Active");
+        }
+        else
+        {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "○ Inactive");
+        }
+        
+        ImGui::TextWrapped(*cubeEnabled ? 
+            "Cube collision and rendering enabled" : 
+            "Cube hidden and collisions disabled");
+    }
 
         if (ImGui::CollapsingHeader("Analysis Windows", ImGuiTreeNodeFlags_DefaultOpen))
         {

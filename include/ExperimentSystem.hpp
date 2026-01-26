@@ -38,10 +38,10 @@ public:
     ExperimentLogger();
     ~ExperimentLogger();
 
-    void startExperiment(const std::string& name);
     void logFrame(const FrameData& data, int runNumber);
     void logEvent(const std::string& message);
     void endExperiment();
+    void startExperiment(const std::string& name);
 
     std::string getDataFolder() const { return dataFolder; };
 };
@@ -57,6 +57,7 @@ private:
     
 public:
     ExperimentSystem(Cloth* clothPtr);
+
     void exp1_thresholdImpact();
     void exp2_windStrength();
     void exp3_windDirection();

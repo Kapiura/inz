@@ -2,12 +2,14 @@
 #include "AnalysisData.hpp"
 #include "Cloth.hpp"
 #include "Ray.hpp"
+#include "Object.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <set>
 #include <queue>
 #include <stb_image.h>
+
 
 glm::vec3 midpoint(const glm::vec3 &a, const glm::vec3 &b)
 {
@@ -38,7 +40,6 @@ void Cloth::initCloth()
     springs.reserve((resX - 1) * resY + resX * (resY - 1) + (resX - 1) * (resY - 1));
     massIndexMap.resize(resX * resY);
 
-        
     const float massValue = defaultMass;  
 
     float structuralStiff = defaultStructuralStiffness;   
@@ -48,24 +49,54 @@ void Cloth::initCloth()
     float bendingStiff = defaultBendingStiffness;         
     float bendingDamping = defaultBendingDamping;    
 
-    for (int y = 0; y < resY; y++)
+for (int y = 0; y < resY; y++)
+{
+    for (int x = 0; x < resX; x++)
     {
-        for (int x = 0; x < resX; x++)
+        glm::vec3 pos;
+        bool isFixed;
+
+        if (currentOrientation == ClothOrientation::VERTICAL)
         {
             float xpos = (x / float(resX - 1)) * width - width / 2.0f;
             float ypos = 5.0f - (y / float(resY - 1)) * height;
             float zpos = 0.0f;
-
-            float u = x / float(resX - 1);
-            float v = y / float(resY - 1);
-
-            bool isFixed = (y == 0);
-            masses.emplace_back(glm::vec3(xpos, ypos, zpos), massValue, isFixed, glm::vec2(u, v));
             
-            int gridIdx = y * resX + x;
-            massIndexMap[gridIdx] = gridIdx;
+            pos = glm::vec3(xpos, ypos, zpos);
+            isFixed = (y == 0);
         }
+        else
+        {
+            float xpos = (x / float(resX - 1)) * width - width / 2.0f;
+            float ypos = 5.0f;
+            float zpos = (y / float(resY - 1)) * height - height / 2.0f;
+            
+            pos = glm::vec3(xpos, ypos, zpos);
+            
+            isFixed = (x == 0) || (x == resX-1) || 
+                     (y == 0) || (y == resY-1);
+        }
+
+        float u = x / float(resX - 1);
+        float v = y / float(resY - 1);
+
+        masses.emplace_back(pos, massValue, isFixed, glm::vec2(u, v));
+        
+        if (!isFixed)
+        {
+            float offsetScale = 0.001f;
+            glm::vec3 offset(
+                (x % 2 == 0 ? 1.0f : -1.0f) * offsetScale,
+                -offsetScale * 0.5f,
+                (y % 2 == 0 ? 1.0f : -1.0f) * offsetScale * 0.5f
+            );
+            masses.back().prevPosition = pos - offset;
+        }
+        
+        int gridIdx = y * resX + x;
+        massIndexMap[gridIdx] = gridIdx;
     }
+}
 
     for (int y = 0; y < resY; y++)
     {
@@ -137,31 +168,30 @@ void Cloth::initCloth()
     {
         glGenTextures(1, &textureID);
         glBindTexture(GL_TEXTURE_2D, textureID);
-        
+
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        
+
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
         int width, height, nrChannels;
-        unsigned char *data = stbi_load("../img/textures/cloth.png", &width, &height, &nrChannels, 0);
-        
+        unsigned char* data = stbi_load("../img/textures/john.jpg", &width, &height, &nrChannels, 0);
+
+        GLenum format;
+        GLenum internal;
+
+        if (nrChannels == 1) { format = GL_RED;  internal = GL_R8; }
+        if (nrChannels == 3) { format = GL_RGB;  internal = GL_RGB8; }
+        if (nrChannels == 4) { format = GL_RGBA; internal = GL_RGBA8; }
+
         if (data)
         {
-            GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
-            glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+            glTexImage2D(GL_TEXTURE_2D, 0, internal, width, height, 0, format, GL_UNSIGNED_BYTE, data);
             glGenerateMipmap(GL_TEXTURE_2D);
-            std::cout << "Loaded texture: " << width << "x" << height << std::endl;
         }
-        else
-        {
-            std::cout << "Failed to load texture, using checkerboard pattern\n";
-            unsigned char checkerboard[64];
-            for(int i = 0; i < 64; i++)
-                checkerboard[i] = ((i/8 + (i%8)) % 2) ? 255 : 0;
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 8, 8, 0, GL_RED, GL_UNSIGNED_BYTE, checkerboard);
-        }
-        
+
         stbi_image_free(data);
     }
 
@@ -227,11 +257,11 @@ void Cloth::reset()
 {
     selectedMassIndex = -1;
     initCloth();
-    std::cout << "Reset cloth\n";
 }
 
 Cloth::Cloth(float width, float height, int resX, int resY, float floorY)
-    : width(width), height(height), resX(resX), resY(resY), floorY(floorY)
+    : width(width), height(height), resX(resX), resY(resY), floorY(floorY),
+      currentOrientation(ClothOrientation::VERTICAL)
 {
     VAO_masses = 0, VBO_masses = 0;
     VAO_lines = 0, VBO_lines = 0;
@@ -562,8 +592,6 @@ void Cloth::removeIsolatedMasses()
     if (removeCount == 0)
         return;
 
-    std::cout << "Removing " << removeCount << " isolated/floating masses\n";
-
     std::vector<int> newIndex(masses.size(), -1);
     int currentNew = 0;
     
@@ -648,8 +676,6 @@ void Cloth::update(float dt)
         mass.update(dt);
     }   
 
-
-    
     for (int iter = 0; iter < solverIterations; ++iter)
     {
         for (auto &spring : springs)
@@ -688,6 +714,28 @@ void Cloth::update(float dt)
                     massB.position -= correction * correctionFactorScaled;
             }
         }
+        
+        if (enableCollisions)
+        for (auto* obj : collisionObjects)
+        {
+            for (auto& mass : masses)
+            {
+                if (!mass.fixed)
+                {
+                    glm::vec3 correction;
+                    if (obj->checkCollision(mass.position, correction))
+                    {
+                        mass.position += correction;
+                        
+                        float correctionLength = glm::length(correction);
+                        if (correctionLength > 0.001f)
+                        {
+                            glm::vec3 normal = correction / correctionLength;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     for (auto &mass : masses)
@@ -695,7 +743,7 @@ void Cloth::update(float dt)
         if (mass.position.y < floorY)
         {
             mass.position.y = floorY;
-            mass.prevPosition = mass.position;
+            mass.prevPosition.y = floorY;
         }
     }
 
@@ -704,19 +752,13 @@ void Cloth::update(float dt)
         checkSpringTension();
     }
 
-    static int frameCounter = 0;
-    if (++frameCounter >= 30)
-    {
-        frameCounter = 0;
-    }
-
     analysis.updateGlobalStats(masses, springs, simulationTime);
     
     if (trackingMode && trackedMassIndex >= 0 && trackedMassIndex < masses.size())
-{
-    analysis.recordMassPointData(trackedMassIndex, masses[trackedMassIndex], 
-                                springs, simulationTime);
-}
+    {
+        analysis.recordMassPointData(trackedMassIndex, masses[trackedMassIndex], 
+                                    springs, simulationTime);
+    }
 
     rebuildGraphicsData();
     rebuildTextureData();
@@ -736,7 +778,6 @@ void Cloth::update(float dt)
         glBufferSubData(GL_ARRAY_BUFFER, 0, textureVertices.size() * sizeof(float), textureVertices.data());
     }
 }
-
 void Mass::update(float dt)
 {
     if (fixed)
@@ -748,9 +789,10 @@ void Mass::update(float dt)
     glm::vec3 acceleration = force / mass;
 
     glm::vec3 currentPosition = position;
+    float damping = 0.99f;
     position = position
-             + (position - prevPosition)
-             + acceleration * (dt * dt);
+            + (position - prevPosition) * damping
+            + acceleration * (dt * dt);
     prevPosition = currentPosition;
 
     force = glm::vec3(0.0f);
@@ -916,9 +958,6 @@ void Cloth::resize(float newWidth, float newHeight, int newResX, int newResY)
     
     cleanupBuffers(); 
     initCloth();
-    
-    std::cout << "Cloth resized to " << width << "x" << height 
-              << " with resolution " << resX << "x" << resY << std::endl;
 }
 
 void Cloth::cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos,
@@ -1042,8 +1081,6 @@ void Cloth::cutSpringsWithRay(const Ray &ray, const glm::vec3 &previousMousePos,
 
         rebuildGraphicsData();
         rebuildTextureData();
-        
-        std::cout << "Cut " << springsToCut.size() << " springs\n";
     }
 }
 
@@ -1073,17 +1110,14 @@ void Cloth::checkSpringTension()
         
         if (currentLength < 0.0001f)
             continue;
-            
         float stretchRatio = currentLength / spring.restLength;
         
         if (stretchRatio > tensionBreakThreshold)
         {
             tensionCounter[i]++;
-            
             if (tensionCounter[i] >= FRAMES_BEFORE_BREAK)
             {
                 bool shouldBreak = true;
-                
                 if ((massA.fixed && !massB.fixed) || (!massA.fixed && massB.fixed))
                 {
                     if (stretchRatio < tensionBreakThreshold * 1.5f)
@@ -1091,17 +1125,11 @@ void Cloth::checkSpringTension()
                         shouldBreak = false;
                     }
                 }
-                
                 if (shouldBreak)
                 {
                     springsToBreak.push_back(i);
-                    
                     glm::vec3 breakPos = (massA.position + massB.position) * 0.5f;
                     analysis.recordSpringBreak(i, breakPos, stretchRatio, simulationTime);
-                    
-                    std::cout << "Spring #" << i << " broke! "
-                              << "Stretch: " << stretchRatio << "x "
-                              << "(threshold: " << tensionBreakThreshold << "x)\n";
                 }
             }
         }
@@ -1113,15 +1141,12 @@ void Cloth::checkSpringTension()
     
     if (!springsToBreak.empty())
     {
-        std::cout << "Breaking " << springsToBreak.size() << " springs due to tension\n";
-        
         for (int i = springsToBreak.size() - 1; i >= 0; --i)
         {
             int springIdx = springsToBreak[i];
             springs.erase(springs.begin() + springIdx);
             tensionCounter.erase(tensionCounter.begin() + springIdx);
         }
-        
         rebuildGraphicsData();
         rebuildTextureData();
     }
@@ -1175,4 +1200,154 @@ AnalysisDisplayData Cloth::getAnalysisDisplayData() const
     }
     
     return data;
+}
+
+void Cloth::freeCloth()
+{
+    for(auto& mass: masses)
+        mass.fixed = false;
+}
+
+void Cloth::addCollisionObject(Object* obj)
+{
+    if (obj != nullptr)
+    {
+        collisionObjects.push_back(obj);
+    }
+}
+
+void Cloth::removeCollisionObject(Object* obj)
+{
+    collisionObjects.erase(std::remove(collisionObjects.begin(), collisionObjects.end(), obj), collisionObjects.end());
+}
+
+void Cloth::clearCollisionObjects()
+{
+    collisionObjects.clear();
+}
+
+void Cloth::setOrientation(ClothOrientation orientation)
+{
+    if (currentOrientation != orientation)
+    {
+        currentOrientation = orientation;
+        selectedMassIndex = -1;
+        initCloth();
+    }
+}
+
+void Cloth::setPhysicalProperties(float mass, float structStiff, float structDamp, float shearStiff, float shearDamp, float bendStiff, float bendDamp)
+{
+    defaultMass = mass;
+    defaultStructuralStiffness = structStiff;
+    defaultStructuralDamping = structDamp;
+    defaultShearStiffness = shearStiff;
+    defaultShearDamping = shearDamp;
+    defaultBendingStiffness = bendStiff;
+    defaultBendingDamping = bendDamp;
+}
+
+void Cloth::setSolverParameters(int iterations, float correction, float maxStretch)
+{
+    solverIterations = iterations;
+    correctionFactor = correction;
+    maxStretchRatio = maxStretch;
+}
+
+const ForceManager& Cloth::getForceManager() const
+{
+    return forceManager;
+}
+
+const float Cloth::getClothWidth() const 
+{
+    return width;
+}
+
+const float Cloth::getClothHeight() const 
+{
+    return height;
+}
+
+const std::vector<Mass> &Cloth::getMasses() const 
+{
+    return masses;
+}
+
+const std::vector<Spring> &Cloth::getSprings() const 
+{
+    return springs;
+}
+
+Mass &Cloth::getMass(int index) 
+{ 
+    return masses[index]; 
+}
+
+ForceManager& Cloth::getForceManager() 
+{ 
+    return forceManager; 
+}
+void Cloth::changeMassesVisible() 
+{ 
+    massVisible = !massVisible; 
+}
+void Cloth::changeSpringsVisible() 
+{ 
+    springVisible = !springVisible;
+}
+
+void Cloth::changeTextureVisible() 
+{ 
+    textureVisible = !textureVisible;
+}
+
+void Cloth::setTensionBreaking(float threshold) 
+{
+    tensionBreakThreshold = threshold;
+}
+
+void Cloth::setTensionBreakThreshold(float threshold) 
+{
+    tensionBreakThreshold = threshold;
+}
+
+void Cloth::setCutThreshold(float threshold) 
+{
+    cutThresholdPixels = threshold;
+}
+
+void Cloth::setEnableTensionBreaking(bool enabled) 
+{
+    enableTensionBreaking = enabled;
+}
+
+float Cloth::getTensionBreaking() const 
+{ 
+    return tensionBreakThreshold; 
+}
+
+float Cloth::getTensionBreakThreshold() const 
+{ 
+    return tensionBreakThreshold; 
+}
+
+float Cloth::getCutThreshold() const 
+{ 
+    return cutThresholdPixels; 
+}
+
+bool Cloth::getEnableTensionBreaking() const 
+{ 
+    return enableTensionBreaking;
+}
+
+ClothAnalysis& Cloth::getAnalysis()
+{
+    return analysis;
+}
+
+const ClothAnalysis& Cloth::getAnalysis() const 
+{
+    return analysis;
 }

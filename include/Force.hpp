@@ -6,6 +6,7 @@
 #include <typeindex>
 #include <unordered_map>
 #include <cmath>
+#include <random>
 
 struct Mass;
 
@@ -42,6 +43,8 @@ public:
     WindForce(const glm::vec3& dir, float str) 
         : direction(glm::normalize(dir)), strength(str) 
         {
+            std::random_device rd;
+            std::mt19937 gen(rd());
             this->enabled = false;
         }
     
@@ -59,11 +62,16 @@ public:
     }
     
     float getStrength() const { return strength; }
-    void setStrength(float str) { strength = str; }
+    void setStrength(float str) 
+    { 
+        distr = std::uniform_int_distribution<>(strength / 2, strength);
+        strength = str; 
+    }
     
 private:
     glm::vec3 direction;
     float strength;
+    std::uniform_int_distribution<> distr;
 };
 
 class OscillatingForce : public Force
