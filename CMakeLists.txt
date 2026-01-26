@@ -48,6 +48,7 @@ add_executable(clothSim
     src/Texture.cpp
     src/ExperimentSystem.cpp
     src/Object.cpp
+    src/GUI.cpp
 )
 
 find_package(OpenGL REQUIRED)

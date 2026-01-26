@@ -1,5 +1,4 @@
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -7,21 +6,21 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 
+#include <array>
 #include <cmath>
 #include <iostream>
-#include <string>
 #include <limits>
 #include <memory>
-#include <array>
+#include <string>
 
+#include "AppData.hpp"
 #include "Camera.hpp"
 #include "Cloth.hpp"
-#include "Shader.hpp"
-#include "Ray.hpp"
-#include "Skybox.hpp"
-#include "GUI.hpp"
 #include "ExperimentSystem.hpp"
-#include "AppData.hpp"
+#include "GUI.hpp"
+#include "Ray.hpp"
+#include "Shader.hpp"
+#include "Skybox.hpp"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -73,9 +72,9 @@ void mouseCallback(GLFWwindow *window, double xposIn, double yposIn);
 void scrollCallback(GLFWwindow *window, double xoffset, double yoffset);
 void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods);
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
-void charCallback(GLFWwindow* window, unsigned int c);
+void charCallback(GLFWwindow *window, unsigned int c);
 void initSpheres();
-void renderForceVisualizations(Shader& shader, Cloth& cloth, const glm::vec3& lightPos);
+void renderForceVisualizations(Shader &shader, Cloth &cloth, const glm::vec3 &lightPos);
 
 void processInput(GLFWwindow *window);
 void updateGrabbedMass(GLFWwindow *window);
@@ -95,23 +94,23 @@ void setupShadowMap();
 unsigned int floorVAO = 0, floorVBO = 0;
 
 // MAIN
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
     bool experimentMode = false;
     std::string experimentName = "";
 
-    if(argc > 1)
+    if (argc > 1)
     {
         std::string arg = argv[1];
-        if(arg == "--experiment" or arg == "-e")
+        if (arg == "--experiment" or arg == "-e")
         {
             experimentMode = true;
-            if(argc > 2)
+            if (argc > 2)
             {
                 experimentName = argv[2];
             }
         }
-        else if(arg == "--help" or arg == "-h")
+        else if (arg == "--help" or arg == "-h")
         {
             std::cout << "help\n";
             return 0;
@@ -128,60 +127,54 @@ int main(int argc, char** argv)
 
     setupShadowMap();
 
-    std::vector<std::string> faces = {
-        "../img/skybox/right.jpg",
-        "../img/skybox/left.jpg",
-        "../img/skybox/top.jpg",
-        "../img/skybox/bottom.jpg",
-        "../img/skybox/front.jpg",
-        "../img/skybox/back.jpg"
-    };
+    std::vector<std::string> faces = {"../img/skybox/right.jpg",  "../img/skybox/left.jpg",  "../img/skybox/top.jpg",
+                                      "../img/skybox/bottom.jpg", "../img/skybox/front.jpg", "../img/skybox/back.jpg"};
     Skybox skybox(faces);
 
     Cloth cloth(4.0f, 4.0f, 30, 30, -10.0f);
 
-    Cube* cube = new Cube (glm::vec3(0, -2, 0), glm::vec3(2, 2, 2), "../img/textures/krem.png");
+    Cube *cube = new Cube(glm::vec3(0, -2, 0), glm::vec3(2, 2, 2), "../img/textures/krem.png");
     cloth.addCollisionObject(cube);
 
-    if(experimentMode)
+    if (experimentMode)
     {
         std::cout << "Welcome to experiment mode\n";
 
         ExperimentSystem experimentSystem(&cloth);
 
-        if(experimentName == "all")
+        if (experimentName == "all")
         {
             experimentSystem.runAllExp();
         }
-        else if(experimentName == "exp1")
+        else if (experimentName == "exp1")
         {
             experimentSystem.exp1_thresholdImpact();
         }
-        else if(experimentName == "exp2")
+        else if (experimentName == "exp2")
         {
             experimentSystem.exp2_windStrength();
         }
-        else if(experimentName == "exp3")
+        else if (experimentName == "exp3")
         {
             experimentSystem.exp3_windDirection();
         }
-        else if(experimentName == "exp4")
+        else if (experimentName == "exp4")
         {
             experimentSystem.exp4_gravityImpact();
         }
-        else if(experimentName == "exp5")
+        else if (experimentName == "exp5")
         {
             experimentSystem.exp5_cascadeBreaking();
         }
-        else if(experimentName == "exp6")
+        else if (experimentName == "exp6")
         {
             experimentSystem.exp6_solverStability();
         }
-        else if(experimentName == "exp7")
+        else if (experimentName == "exp7")
         {
             experimentSystem.exp7_meshSizePerf();
         }
-        else if(experimentName == "exp8")
+        else if (experimentName == "exp8")
         {
             experimentSystem.exp8_springTypes();
         }
@@ -217,29 +210,25 @@ int main(int argc, char** argv)
 
     float floorVertices[] = {
         // positions          // normals           // texture coords
-        -50.0f, -10.0f, -50.0f,  0.0f, 1.0f, 0.0f,  0.0f, 0.0f,
-         50.0f, -10.0f, -50.0f,  0.0f, 1.0f, 0.0f,  10.0f, 0.0f,
-         50.0f, -10.0f,  50.0f,  0.0f, 1.0f, 0.0f,  10.0f, 10.0f,
-         50.0f, -10.0f,  50.0f,  0.0f, 1.0f, 0.0f,  10.0f, 10.0f,
-        -50.0f, -10.0f,  50.0f,  0.0f, 1.0f, 0.0f,  0.0f, 10.0f,
-        -50.0f, -10.0f, -50.0f,  0.0f, 1.0f, 0.0f,  0.0f, 0.0f
-    };
+        -50.0f, -10.0f, -50.0f, 0.0f, 1.0f, 0.0f, 0.0f,  0.0f,  50.0f,  -10.0f, -50.0f, 0.0f, 1.0f, 0.0f, 10.0f, 0.0f,
+        50.0f,  -10.0f, 50.0f,  0.0f, 1.0f, 0.0f, 10.0f, 10.0f, 50.0f,  -10.0f, 50.0f,  0.0f, 1.0f, 0.0f, 10.0f, 10.0f,
+        -50.0f, -10.0f, 50.0f,  0.0f, 1.0f, 0.0f, 0.0f,  10.0f, -50.0f, -10.0f, -50.0f, 0.0f, 1.0f, 0.0f, 0.0f,  0.0f};
 
     glGenVertexArrays(1, &floorVAO);
     glGenBuffers(1, &floorVBO);
     glBindVertexArray(floorVAO);
     glBindBuffer(GL_ARRAY_BUFFER, floorVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(floorVertices), floorVertices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
     glEnableVertexAttribArray(2);
 
     initSpheres();
 
-   while (!glfwWindowShouldClose(window))
+    while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
 
@@ -265,12 +254,12 @@ int main(int argc, char** argv)
         glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
         glClear(GL_DEPTH_BUFFER_BIT);
         renderScene(shadowShader, cloth);
-        
+
         if (cubeEnabled)
-{
-    cube->render(shadowShader);
-}
-        
+        {
+            cube->render(shadowShader);
+        }
+
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
@@ -278,9 +267,8 @@ int main(int argc, char** argv)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         shader.use();
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom),
-                                                (float)SCR_WIDTH / (float)SCR_HEIGHT,
-                                                0.1f, 100.0f);
+        glm::mat4 projection =
+            glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
         glm::mat4 model = glm::mat4(1.0f);
 
@@ -302,12 +290,12 @@ int main(int argc, char** argv)
         shader.setInt("clothTexture", 0);
 
         renderScene(shader, cloth);
-        
+
         if (cubeEnabled)
-{
-    cube->render(shader);
-}
-        
+        {
+            cube->render(shader);
+        }
+
         renderForceVisualizations(shader, cloth, lightPos);
         renderCuttingPath(shader);
 
@@ -343,13 +331,13 @@ void setupShadowMap()
 
     glGenTextures(1, &depthMap);
     glBindTexture(GL_TEXTURE_2D, depthMap);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT,
-                 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT,
+                 NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
     glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 
     glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
@@ -429,14 +417,14 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     if (action != GLFW_PRESS)
         return;
 
-    ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO &io = ImGui::GetIO();
     if (io.WantCaptureKeyboard && key != GLFW_KEY_ESCAPE && key != GLFW_KEY_C)
         return;
 
     AppData *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
     Cloth *cloth = appData->cloth;
     Skybox *skybox = appData->skybox;
-    ForceManager& forceManager = cloth->getForceManager();
+    ForceManager &forceManager = cloth->getForceManager();
 
     switch (key)
     {
@@ -537,7 +525,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         break;
 
     case GLFW_KEY_P:
-        if (WindForce* wind = forceManager.getForce<WindForce>())
+        if (WindForce *wind = forceManager.getForce<WindForce>())
         {
             wind->setEnabled(!wind->isEnabled());
             std::cout << "Wind: " << (wind->isEnabled() ? "ON" : "OFF") << std::endl;
@@ -545,7 +533,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         break;
 
     case GLFW_KEY_1:
-        if (WindForce* wind = forceManager.getForce<WindForce>())
+        if (WindForce *wind = forceManager.getForce<WindForce>())
         {
             wind->setDirection(glm::vec3(1.0f, 0.0f, 0.0f));
             std::cout << "Wind direction: RIGHT" << std::endl;
@@ -553,7 +541,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         break;
 
     case GLFW_KEY_2:
-        if (WindForce* wind = forceManager.getForce<WindForce>())
+        if (WindForce *wind = forceManager.getForce<WindForce>())
         {
             wind->setDirection(glm::vec3(-1.0f, 0.0f, 0.0f));
             std::cout << "Wind direction: LEFT" << std::endl;
@@ -561,7 +549,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         break;
 
     case GLFW_KEY_3:
-        if (WindForce* wind = forceManager.getForce<WindForce>())
+        if (WindForce *wind = forceManager.getForce<WindForce>())
         {
             wind->setDirection(glm::vec3(0.0f, 0.0f, 1.0f));
             std::cout << "Wind direction: FORWARD" << std::endl;
@@ -569,7 +557,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         break;
 
     case GLFW_KEY_4:
-        if (WindForce* wind = forceManager.getForce<WindForce>())
+        if (WindForce *wind = forceManager.getForce<WindForce>())
         {
             wind->setDirection(glm::vec3(0.0f, 0.0f, -1.0f));
             std::cout << "Wind direction: BACKWARD" << std::endl;
@@ -577,7 +565,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         break;
 
     case GLFW_KEY_5:
-        if (WindForce* wind = forceManager.getForce<WindForce>())
+        if (WindForce *wind = forceManager.getForce<WindForce>())
         {
             wind->setDirection(glm::vec3(0.0f, 1.0f, 0.0f));
             std::cout << "Wind direction: UP" << std::endl;
@@ -585,7 +573,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         break;
 
     case GLFW_KEY_EQUAL:
-        if (WindForce* wind = forceManager.getForce<WindForce>())
+        if (WindForce *wind = forceManager.getForce<WindForce>())
         {
             float newStrength = glm::min(wind->getStrength() + 1.0f, 20.0f);
             wind->setStrength(newStrength);
@@ -594,7 +582,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         break;
 
     case GLFW_KEY_MINUS:
-        if (WindForce* wind = forceManager.getForce<WindForce>())
+        if (WindForce *wind = forceManager.getForce<WindForce>())
         {
             float newStrength = glm::max(wind->getStrength() - 1.0f, 0.0f);
             wind->setStrength(newStrength);
@@ -603,63 +591,56 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         break;
 
     case GLFW_KEY_G:
-        if (GravityForce* gravity = forceManager.getForce<GravityForce>())
+        if (GravityForce *gravity = forceManager.getForce<GravityForce>())
         {
             gravity->setEnabled(!gravity->isEnabled());
             std::cout << "Gravity: " << (gravity->isEnabled() ? "ON" : "OFF") << std::endl;
         }
         break;
 
-    case GLFW_KEY_O:
+    case GLFW_KEY_O: {
+        if (forceManager.getForce<OscillatingForce>() == nullptr)
         {
-            if (forceManager.getForce<OscillatingForce>() == nullptr)
+            OscillatingForce *oscillating =
+                forceManager.addForce<OscillatingForce>(glm::vec3(1.0f, 0.0f, 0.0f), 3.0f, 2.0f);
+            oscillating->setEnabled(true);
+            std::cout << "Oscillating force ADDED" << std::endl;
+        }
+        else
+        {
+            auto oscillations = forceManager.getForces<OscillatingForce>();
+            for (auto *osc : oscillations)
             {
-                OscillatingForce* oscillating = forceManager.addForce<OscillatingForce>(
-                    glm::vec3(1.0f, 0.0f, 0.0f),
-                    3.0f,
-                    2.0f
-                );
-                oscillating->setEnabled(true);
-                std::cout << "Oscillating force ADDED" << std::endl;
-            }
-            else
-            {
-                auto oscillations = forceManager.getForces<OscillatingForce>();
-                for (auto* osc : oscillations)
-                {
-                    osc->setEnabled(!osc->isEnabled());
-                    std::cout << "Oscillating force: " << (osc->isEnabled() ? "ON" : "OFF") << std::endl;
-                }
+                osc->setEnabled(!osc->isEnabled());
+                std::cout << "Oscillating force: " << (osc->isEnabled() ? "ON" : "OFF") << std::endl;
             }
         }
-        break;
+    }
+    break;
 
-    case GLFW_KEY_T:
-        {
-            bool tensionEnabled = cloth->getEnableTensionBreaking();
-            tensionEnabled = !tensionEnabled;
-            cloth->setEnableTensionBreaking(tensionEnabled);
-            std::cout << "Tension breaking: " << (tensionEnabled ? "ON" : "OFF") << std::endl;
-        }
-        break;
+    case GLFW_KEY_T: {
+        bool tensionEnabled = cloth->getEnableTensionBreaking();
+        tensionEnabled = !tensionEnabled;
+        cloth->setEnableTensionBreaking(tensionEnabled);
+        std::cout << "Tension breaking: " << (tensionEnabled ? "ON" : "OFF") << std::endl;
+    }
+    break;
 
-    case GLFW_KEY_LEFT_BRACKET:
-        {
-            float threshold = cloth->getTensionBreakThreshold();
-            threshold = glm::max(threshold - 0.2f, 2.0f);
-            cloth->setTensionBreakThreshold(threshold);
-            std::cout << "Break threshold: " << threshold << "x" << std::endl;
-        }
-        break;
+    case GLFW_KEY_LEFT_BRACKET: {
+        float threshold = cloth->getTensionBreakThreshold();
+        threshold = glm::max(threshold - 0.2f, 2.0f);
+        cloth->setTensionBreakThreshold(threshold);
+        std::cout << "Break threshold: " << threshold << "x" << std::endl;
+    }
+    break;
 
-    case GLFW_KEY_RIGHT_BRACKET:
-        {
-            float threshold = cloth->getTensionBreakThreshold();
-            threshold = glm::min(threshold + 0.2f, 10.0f);
-            cloth->setTensionBreakThreshold(threshold);
-            std::cout << "Break threshold: " << threshold << "x" << std::endl;
-        }
-        break;
+    case GLFW_KEY_RIGHT_BRACKET: {
+        float threshold = cloth->getTensionBreakThreshold();
+        threshold = glm::min(threshold + 0.2f, 10.0f);
+        cloth->setTensionBreakThreshold(threshold);
+        std::cout << "Break threshold: " << threshold << "x" << std::endl;
+    }
+    break;
 
     case GLFW_KEY_SLASH:
         std::cout << "\n========== CONTROLS ==========\n";
@@ -706,12 +687,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     }
 }
 
-
 void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
 {
     ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
 
-    ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO &io = ImGui::GetIO();
     if (io.WantCaptureMouse)
         return;
 
@@ -806,7 +786,7 @@ void mouseCallback(GLFWwindow *window, double xposIn, double yposIn)
 {
     ImGui_ImplGlfw_CursorPosCallback(window, xposIn, yposIn);
 
-    ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO &io = ImGui::GetIO();
     if (io.WantCaptureMouse)
         return;
 
@@ -837,7 +817,7 @@ void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
 {
     ImGui_ImplGlfw_ScrollCallback(window, xoffset, yoffset);
 
-    ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO &io = ImGui::GetIO();
     if (io.WantCaptureMouse)
         return;
 
@@ -887,9 +867,8 @@ void updateGrabbedMass(GLFWwindow *window)
     }
     else
     {
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom),
-                                                (float)SCR_WIDTH / (float)SCR_HEIGHT,
-                                                0.1f, 100.0f);
+        glm::mat4 projection =
+            glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
 
         cloth->cutSpringsWithRay(ray, lastMouseWorldPos, view, projection, SCR_WIDTH, SCR_HEIGHT);
@@ -900,8 +879,7 @@ void updateGrabbedMass(GLFWwindow *window)
 
         if (rayPlaneIntersection(ray, planePoint, planeNormal, currentMouseWorldPos))
         {
-            if (cuttingPath.empty() ||
-                glm::length(currentMouseWorldPos - cuttingPath.back()) > 0.1f)
+            if (cuttingPath.empty() || glm::length(currentMouseWorldPos - cuttingPath.back()) > 0.1f)
             {
                 cuttingPath.push_back(currentMouseWorldPos);
 
@@ -930,11 +908,7 @@ void renderCuttingPath(Shader &shader)
     {
         glPointSize(20.0f);
 
-        std::vector<float> pointVertex = {
-            cuttingPath[0].x,
-            cuttingPath[0].y,
-            cuttingPath[0].z
-        };
+        std::vector<float> pointVertex = {cuttingPath[0].x, cuttingPath[0].y, cuttingPath[0].z};
 
         GLuint pointVAO, pointVBO;
         glGenVertexArrays(1, &pointVAO);
@@ -942,8 +916,7 @@ void renderCuttingPath(Shader &shader)
 
         glBindVertexArray(pointVAO);
         glBindBuffer(GL_ARRAY_BUFFER, pointVBO);
-        glBufferData(GL_ARRAY_BUFFER, pointVertex.size() * sizeof(float),
-                     pointVertex.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, pointVertex.size() * sizeof(float), pointVertex.data(), GL_STATIC_DRAW);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
         glEnableVertexAttribArray(0);
 
@@ -974,8 +947,7 @@ void renderCuttingPath(Shader &shader)
 
     glBindVertexArray(pathVAO);
     glBindBuffer(GL_ARRAY_BUFFER, pathVBO);
-    glBufferData(GL_ARRAY_BUFFER, pathVertices.size() * sizeof(float),
-                 pathVertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, pathVertices.size() * sizeof(float), pathVertices.data(), GL_STATIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
 
@@ -1025,7 +997,7 @@ bool rayPlaneIntersection(const Ray &ray, const glm::vec3 &planePoint, const glm
     return true;
 }
 
-void charCallback(GLFWwindow* window, unsigned int c)
+void charCallback(GLFWwindow *window, unsigned int c)
 {
     ImGui_ImplGlfw_CharCallback(window, c);
 }
@@ -1038,9 +1010,9 @@ void generateSphere(float radius, unsigned int rings, unsigned int sectors)
     float const R = 1.0f / (float)(rings - 1);
     float const S = 1.0f / (float)(sectors - 1);
 
-    for(unsigned int r = 0; r < rings; r++)
+    for (unsigned int r = 0; r < rings; r++)
     {
-        for(unsigned int s = 0; s < sectors; s++)
+        for (unsigned int s = 0; s < sectors; s++)
         {
             float const y = sin(-M_PI_2 + M_PI * r * R);
             float const x = cos(2 * M_PI * s * S) * sin(M_PI * r * R);
@@ -1052,9 +1024,9 @@ void generateSphere(float radius, unsigned int rings, unsigned int sectors)
         }
     }
 
-    for(unsigned int r = 0; r < rings - 1; r++)
+    for (unsigned int r = 0; r < rings - 1; r++)
     {
-        for(unsigned int s = 0; s < sectors - 1; s++)
+        for (unsigned int s = 0; s < sectors - 1; s++)
         {
             sphereIndices.push_back(r * sectors + s);
             sphereIndices.push_back((r + 1) * sectors + s);
@@ -1078,20 +1050,19 @@ void initSpheres()
     glBindVertexArray(sphereVAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
-    glBufferData(GL_ARRAY_BUFFER, sphereVertices.size() * sizeof(float),
-                 sphereVertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sphereVertices.size() * sizeof(float), sphereVertices.data(), GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sphereIndices.size() * sizeof(unsigned int),
-                 sphereIndices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sphereIndices.size() * sizeof(unsigned int), sphereIndices.data(),
+                 GL_STATIC_DRAW);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
 
     glBindVertexArray(0);
 }
 
-void renderSphere(Shader& shader, const glm::vec3& position, const glm::vec3& color, float scale = 1.0f)
+void renderSphere(Shader &shader, const glm::vec3 &position, const glm::vec3 &color, float scale = 1.0f)
 {
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, position);
@@ -1106,13 +1077,13 @@ void renderSphere(Shader& shader, const glm::vec3& position, const glm::vec3& co
     glBindVertexArray(0);
 }
 
-void renderForceVisualizations(Shader& shader, Cloth& cloth, const glm::vec3& lightPos)
+void renderForceVisualizations(Shader &shader, Cloth &cloth, const glm::vec3 &lightPos)
 {
-    ForceManager& fm = cloth.getForceManager();
+    ForceManager &fm = cloth.getForceManager();
 
     renderSphere(shader, lightPos, glm::vec3(1.0f, 1.0f, 0.0f), 0.3f);
 
-    if (WindForce* wind = fm.getForce<WindForce>())
+    if (WindForce *wind = fm.getForce<WindForce>())
     {
         if (wind->isEnabled())
         {
@@ -1122,21 +1093,20 @@ void renderForceVisualizations(Shader& shader, Cloth& cloth, const glm::vec3& li
 
             renderSphere(shader, windPos, glm::vec3(0.3f, 0.7f, 1.0f), 0.3f + strength * 0.02f);
 
-            std::vector<float> arrowVertices = {
-                windPos.x, windPos.y, windPos.z,
-                windPos.x + windDir.x * 2.0f,
-                windPos.y + windDir.y * 2.0f,
-                windPos.z + windDir.z * 2.0f
-            };
+            std::vector<float> arrowVertices = {windPos.x,
+                                                windPos.y,
+                                                windPos.z,
+                                                windPos.x + windDir.x * 2.0f,
+                                                windPos.y + windDir.y * 2.0f,
+                                                windPos.z + windDir.z * 2.0f};
 
             GLuint arrowVAO, arrowVBO;
             glGenVertexArrays(1, &arrowVAO);
             glGenBuffers(1, &arrowVBO);
             glBindVertexArray(arrowVAO);
             glBindBuffer(GL_ARRAY_BUFFER, arrowVBO);
-            glBufferData(GL_ARRAY_BUFFER, arrowVertices.size() * sizeof(float),
-                        arrowVertices.data(), GL_STATIC_DRAW);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+            glBufferData(GL_ARRAY_BUFFER, arrowVertices.size() * sizeof(float), arrowVertices.data(), GL_STATIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
             glEnableVertexAttribArray(0);
 
             shader.setVec3("color", glm::vec3(0.3f, 0.7f, 1.0f));
