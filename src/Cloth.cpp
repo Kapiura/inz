@@ -174,7 +174,7 @@ void Cloth::initCloth()
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
         int width, height, nrChannels;
-        unsigned char *data = stbi_load("../img/textures/john.jpg", &width, &height, &nrChannels, 0);
+        unsigned char *data = stbi_load("../img/textures/cloth1.jpg", &width, &height, &nrChannels, 0);
 
         GLenum format;
         GLenum internal;
