@@ -536,19 +536,24 @@ void Cloth::update(float dt)
 {
     simulationTime += dt;
 
-    forceManager.update(dt);
+    for (auto &mass : masses)
+    {
+        mass.force = glm::vec3(0.0f);
+        if (!mass.fixed)
+        {
+            glm::vec3 externalForces = forceManager.calculateTotalForce(mass, simulationTime);
+            mass.applyForce(externalForces);
+        }
+    }
+
+    applySpringForces();
 
     for (auto &mass : masses)
     {
-        if (!mass.fixed)
-        {
-            glm::vec3 totalForce = forceManager.calculateTotalForce(mass, simulationTime);
-
-            mass.applyForce(totalForce);
-        }
-
         mass.update(dt);
     }
+
+    applySpringForces();
 
     for (int iter = 0; iter < solverIterations; ++iter)
     {
@@ -1228,4 +1233,38 @@ bool Cloth::getEnableCollisions() const
 Cloth::ClothOrientation Cloth::getOrientation() const
 {
     return currentOrientation;
+}
+
+void Cloth::applySpringForces()
+{
+    for (const auto &spring : springs)
+    {
+        Mass &massA = masses[spring.a];
+        Mass &massB = masses[spring.b];
+
+        glm::vec3 delta = massB.position - massA.position;
+        float currentLength = glm::length(delta);
+
+        if (currentLength < 0.0001f)
+            continue;
+
+        glm::vec3 direction = delta / currentLength;
+
+        float displacement = currentLength - spring.restLength;
+        float springForceMagnitude = spring.stiffness * displacement;
+        glm::vec3 springForce = direction * springForceMagnitude;
+
+        glm::vec3 velocityA = massA.position - massA.prevPosition;
+        glm::vec3 velocityB = massB.position - massB.prevPosition;
+        glm::vec3 relativeVelocity = velocityB - velocityA;
+        float relativeVelocityAlongSpring = glm::dot(relativeVelocity, direction);
+        glm::vec3 dampingForce = direction * (spring.damping * relativeVelocityAlongSpring);
+
+        glm::vec3 totalSpringForce = springForce + dampingForce;
+
+        if (!massA.fixed)
+            massA.applyForce(totalSpringForce);
+        if (!massB.fixed)
+            massB.applyForce(-totalSpringForce);
+    }
 }

@@ -83,6 +83,7 @@ class Cloth
     void satisfy();
     void calculateNormals();
     void checkSpringTension();
+    void applySpringForces();
 
     // Rendering
     void draw(Shader &shader);

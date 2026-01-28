@@ -1,8 +1,8 @@
 #include "GUI.hpp"
-#include "Cloth.hpp"
 #include "AnalysisData.hpp"
 #include "AppData.hpp"
 #include "Camera.hpp"
+#include "Cloth.hpp"
 #include "Force.hpp"
 #include <algorithm>
 #include <fstream>
