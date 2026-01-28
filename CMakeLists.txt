@@ -35,7 +35,7 @@ target_include_directories(imgui_lib PUBLIC
 add_library(glad src/glad.c)
 target_include_directories(glad PUBLIC include)
 
-add_executable(my_opengl_in_test
+add_executable(clothSim
     src/AABB.cpp
     src/AnalysisData.cpp
     src/Camera.cpp
@@ -46,14 +46,17 @@ add_executable(my_opengl_in_test
     src/Shader.cpp
     src/Skybox.cpp
     src/Texture.cpp
+    src/ExperimentSystem.cpp
+    src/Object.cpp
+    src/GUI.cpp
 )
 
 find_package(OpenGL REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
 
-target_include_directories(my_opengl_in_test PRIVATE include)
+target_include_directories(clothSim PRIVATE include)
 
-target_link_libraries(my_opengl_in_test
+target_link_libraries(clothSim
     PRIVATE
         glad
         glfw
